@@ -1,0 +1,29 @@
+# v0.1 — BM25 baseline. Không hằng số nào được hard-code trong code (INTERFACES mục 6).
+exp_id: v0.1_bm25
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts        # thư mục chứa 8.532 file context_*.json
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks.jsonl
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  out_dir:      outputs/v0.1_bm25
+
+data:
+  holdout_size: 1000        # mô phỏng đúng kích thước public test
+
+chunking:
+  max_words: 180            # ~256 subword với tokenizer đa ngữ
+  overlap_words: 45
+  prepend_name: true        # gắn tiêu đề văn bản vào đầu mỗi chunk
+
+retrieval:
+  top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống
+  top_k_submit: 5           # BTC chặn cứng ở 5
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: max               # max | sum, cách gộp chunk → doc

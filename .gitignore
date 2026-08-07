@@ -1,0 +1,34 @@
+# ── Dữ liệu của BTC: KHÔNG BAO GIỜ commit ────────────────────────────
+# Đẩy dữ liệu BTC lên GitHub là phát tán ra ngoài phạm vi cuộc thi.
+data/
+!data/.gitkeep
+*.json
+*.jsonl
+!configs/*.json
+!docs/*.json
+
+# ── Trọng số & artefact nặng ─────────────────────────────────────────
+checkpoints/
+!checkpoints/.gitkeep
+*.npy
+*.npz
+*.pt
+*.bin
+*.safetensors
+*.faiss
+*.pkl
+
+# ── Kết quả chạy ─────────────────────────────────────────────────────
+runs/
+outputs/
+submission*.zip
+*.log
+
+# ── Python ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+.pytest_cache/
+.DS_Store
