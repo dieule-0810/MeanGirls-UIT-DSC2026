@@ -45,8 +45,10 @@ BM25 Okapi trên chunk; gộp lên document bằng max-pooling; trả về top-5
 ## 3. Cài đặt
 
 ```bash
-git clone <repo-url> dsc2026 && cd dsc2026
-python3.11 -m venv .venv && source .venv/bin/activate
+
+python3.11 -m venv .venv && .venv\Scripts\activate.bat # cho Windows
+# python3.11 -m venv .venv && source .venv/bin/activate cho Linus/macOS
+
 pip install -r requirements.txt
 python -m src.verify_env          # phải in "✅ Môi trường OK"
 ```
@@ -66,12 +68,6 @@ data/
 └── public-official.json      (hoặc private-official.json)
 ```
 
-```bash
-mkdir -p data/selected-contexts
-unzip selected-contexts.zip -d data/selected-contexts
-ls data/selected-contexts | wc -l      # phải in đúng 8532
-```
-
 > Dữ liệu **không** được commit lên Git (`.gitignore` đã chặn) — đây là dữ liệu của BTC,
 > không phát tán ra ngoài phạm vi cuộc thi.
 
@@ -89,7 +85,8 @@ vì repo HuggingFace có thể bị tác giả cập nhật làm kết quả l�
 ## 6. Smoke test (2 phút) — **chạy cái này TRƯỚC**
 
 ```bash
-bash scripts/smoke_test.sh
+pip install pytest
+python scripts/smoke_test.py
 ```
 
 Kiểm tra môi trường và xác nhận `src/evaluate.py` khớp chính xác `scoring.py` của BTC (14 test).
@@ -100,7 +97,7 @@ Phải in `✅ PASS`. Nếu fail thì **dừng lại** — chạy tiếp 1.000 c
 ## 7. Chạy inference → `submission.zip`
 
 ```bash
-bash scripts/run_v0.1.sh
+python scripts/run_v0.1.py
 ```
 
 Một lệnh, sinh ra `outputs/v0.1_bm25/submission.zip` sẵn sàng nộp CodaLab.
