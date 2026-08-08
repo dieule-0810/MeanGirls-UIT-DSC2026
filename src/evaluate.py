@@ -166,11 +166,21 @@ def main() -> int:
 
     corpus_ids = None
     if args.corpus:
-        corpus_ids = {
-            json.loads(line)["doc_id"]
-            for line in Path(args.corpus).read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        }
+        corpus_ids = set()
+
+        corpus_path = Path(args.corpus)
+
+        with corpus_path.open("r", encoding="utf-8") as fh:
+            for line_no, line in enumerate(fh, 1):
+                if not line.strip():
+                    continue
+
+                try:
+                    corpus_ids.add(json.loads(line)["doc_id"])
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(
+                        f"JSONL lỗi tại {corpus_path}, dòng {line_no}: {e}"
+                    ) from e
 
     # Chẩn đoán chạy trên dữ liệu THÔ (trước khi ép str) để bắt được lỗi kiểu
     raw_preds = {str(k): (v["answer"] if isinstance(v, dict) else v) for k, v in raw.items()}

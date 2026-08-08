@@ -121,11 +121,21 @@ def main() -> int:
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     top_k = args.top_k or cfg["retrieval"]["top_k_submit"]
 
-    chunks = [
-        json.loads(l)
-        for l in Path(cfg["paths"]["chunks"]).read_text(encoding="utf-8").splitlines()
-        if l.strip()
-    ]
+    chunks = []
+
+    chunks_path = Path(cfg["paths"]["chunks"])
+
+    with chunks_path.open("r", encoding="utf-8") as fh:
+        for line_no, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+
+            try:
+                chunks.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                raise RuntimeError(
+                    f"JSONL lỗi tại {chunks_path}, dòng {line_no}: {e}"
+                ) from e
     print(f"Đánh chỉ mục {len(chunks)} chunk…")
 
     r = BM25Retriever(**cfg["retrieval"]["bm25"])

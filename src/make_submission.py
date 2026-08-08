@@ -160,11 +160,21 @@ def main() -> int:
 
     corpus_ids = None
     if args.corpus:
-        corpus_ids = {
-            json.loads(l)["doc_id"]
-            for l in Path(args.corpus).read_text(encoding="utf-8").splitlines()
-            if l.strip()
-        }
+        corpus_ids = set()
+
+        corpus_path = Path(args.corpus)
+
+        with corpus_path.open("r", encoding="utf-8") as fh:
+            for line_no, line in enumerate(fh, 1):
+                if not line.strip():
+                    continue
+
+                try:
+                    corpus_ids.add(json.loads(line)["doc_id"])
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(
+                        f"JSONL lỗi tại {corpus_path}, dòng {line_no}: {e}"
+                    ) from e
 
     sub = build_submission(preds, expected, corpus_ids, args.fill_missing)
     path = write_zip(sub, args.out)
