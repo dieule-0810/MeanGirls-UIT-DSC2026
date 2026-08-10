@@ -1,1 +1,1 @@
-exp_id,ngay,nguoi_chay,commit,config,recall_holdout,precision_holdout,recall_lb,precision_lb,ghi_chu
+exp_id,ngay,nguoi_chay,commit,config,recall_holdout,precision_holdout,recall_lb,precision_lb,ghi_chu,nhom_so_sanh,gia_thuyet_lien_quan,diem_yeu_khac_phuc_tu_exp_truoc
