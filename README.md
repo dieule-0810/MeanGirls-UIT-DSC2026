@@ -4,6 +4,7 @@
 > Quy tắc: P1 viết, nhưng **P2 hoặc P3 chạy dry-run** và chỉ được làm đúng những gì ghi ở đây.
 > Vướng chỗ nào thì **không hỏi P1** — ghi lại. Mỗi câu phải hỏi là một lỗ hổng đã tìm ra.
 > Máy sạch để dry-run: một notebook Kaggle mới (x86_64, không state cũ, gần môi trường BTC hơn máy M4).
+> Nếu Kaggle hết quota tuần đó, dry-run trên Colab Pro cũng được — miễn máy sạch, x86_64, không state cũ.
 
 ---
 
@@ -155,10 +156,10 @@ src/
   evaluate.py     bản sao chính xác scoring.py của BTC      [P1, KHOÁ]
   make_submission.py  chốt chặn cuối trước CodaLab          [P1, KHOÁ]
   verify_env.py                                             [P1, KHOÁ]
-scripts/          entrypoint chạy được bằng 1 lệnh
+scripts/          entrypoint chạy được bằng 1 lệnh, gồm eda.py                     [P2]
 tests/            kiểm chứng evaluate.py khớp mã BTC
 docker/           Dockerfile — đặc tả môi trường
-docs/             scoring_behaviour.md, model_card.md, data_statement.md, notes tuần
+docs/             scoring_behaviour.md, model_card.md, data_statement.md, eda_notes.md, notes tuần
 INTERFACES.md     hợp đồng dữ liệu giữa 4 người — phần KHOÁ của repo
 experiments.csv   mọi thí nghiệm, kèm commit SHA
 ```

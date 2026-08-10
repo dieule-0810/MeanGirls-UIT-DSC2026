@@ -16,9 +16,18 @@
 | MacBook M4 Pro (MPS, ARM64) | Encode corpus, BM25, eval, phân tích lỗi, dev hằng ngày | Fine-tune (MPS thiếu kernel, chậm 5–10× so với T4); build Docker image cuối |
 | Máy GPU 6GB | Dev, chạy BM25, test code trước khi đẩy lên Kaggle | Model > 300M tham số ở batch thật |
 
-**Giải pháp**: 4 tài khoản Kaggle → **30 giờ GPU T4×2/tuần/tài khoản = 120 giờ/tuần**. Colab free dự phòng. Toàn bộ fine-tune chạy ở đây.
+**Giải pháp**: 4 tài khoản Kaggle → **30 giờ GPU T4×2/tuần/tài khoản = 120 giờ/tuần**. Toàn bộ fine-tune
+chạy ở đây trước.
 
-> Không vi phạm quy định cấm API: BTC cấm dùng API *của mô hình/dịch vụ bên thứ ba trong pipeline*. Kaggle/Colab chỉ là hạ tầng tính toán — trọng số do team tự tải, tự chạy, tự kiểm soát. Dùng Claude Pro hỗ trợ viết code cũng hợp lệ; **tuyệt đối không** gọi bất kỳ API nào bên trong hệ thống dự thi.
+> **Đính chính 09/08/2026**: nếu 120 giờ/tuần Kaggle không đủ (VD tuần dồn nhiều fine-tune cùng lúc, hoặc
+> một tài khoản dính giới hạn/lỗi), phần vượt quota chạy trên **Google Colab Pro (bản trả phí, đã đăng ký)**
+> — **không** cố kéo dài bằng cách tạo thêm/luân phiên thêm tài khoản Kaggle ngoài 4 tài khoản đã có. Colab
+> Pro cho GPU tốt hơn (thường A100/L4 tùy phiên) và session dài hơn bản free, hợp lý hơn để làm chỗ dự
+> phòng thật sự thay vì chỉ "Colab free" như bản trước — bản free hay bị ngắt session giữa chừng, không
+> đáng tin để chạy fine-tune dài. Ai đăng ký Colab Pro và checkpoint có backup lên đâu (Drive/Kaggle
+> Datasets) cần chốt ở standup gần nhất, ghi vào đây.
+
+> Không vi phạm quy định cấm API: BTC cấm dùng API *của mô hình/dịch vụ bên thứ ba trong pipeline*. Kaggle/Colab (kể cả Colab Pro trả phí) chỉ là hạ tầng tính toán — trọng số do team tự tải, tự chạy, tự kiểm soát. Dùng Claude Pro hỗ trợ viết code cũng hợp lệ; **tuyệt đối không** gọi bất kỳ API nào bên trong hệ thống dự thi.
 
 ### 0.2 Corpus chỉ 8.532 văn bản — đừng over-engineer
 
@@ -33,7 +42,7 @@ Top 10 **bắt buộc** nộp mã nguồn tái lập + viết bài báo khoa h�
 
 **Quy tắc bắt buộc từ ngày 1:**
 - Mỗi người viết **1 trang notes/tuần** bằng tiếng Việt: tuần này làm gì, tại sao chọn cách đó, kết quả ra sao. Đây là nguyên liệu thô của bài báo.
-- Mỗi thí nghiệm ghi 1 dòng vào `experiments.csv`: `exp_id, ngày, người chạy, config, Recall@5, Precision, ghi chú`.
+- Mỗi thí nghiệm ghi 1 dòng vào `experiments.csv`: `exp_id, ngày, người chạy, config, Recall@5, Precision, ghi chú, nhom_so_sanh, gia_thuyet_lien_quan, diem_yeu_khac_phuc_tu_exp_truoc` (3 cột cuối bắt buộc từ 09/08 — xem mục 0.6, phục vụ trực tiếp câu hỏi nghiên cứu BTC đặt ra cho bài báo).
 - Dùng Claude để *giải thích* code trước khi copy, không chỉ để *sinh* code. Không merge PR nào mà tác giả không giải thích được cho thành viên khác trong 3 phút.
 
 ---
@@ -66,6 +75,85 @@ chỉ có 3 lượt/ngày → mất 1/3 ngân sách ngày hôm đó vì một l�
 **Mã chấm KHÔNG dùng thứ tự.** Toàn bộ là phép giao tập hợp — không MRR, không NDCG. Doc đúng nằm ở
 vị trí 1 hay 5 đều như nhau. → Đừng tốn công tối ưu thứ tự *bên trong* top-5. Toàn bộ giá trị nằm ở
 **doc đúng có lọt vào tập 5 hay không** và ở **kích thước tập trả về**.
+
+---
+
+### 0.5 EDA trước khi build — bước còn thiếu, bổ sung 09/08/2026
+
+Từng bị bỏ qua trong bản v3: team đi thẳng từ "chuẩn bị hạ tầng" sang "build chunker/BM25" mà không có
+bước khám phá dữ liệu chính thức. Hệ quả: những đặc điểm như `context_69.json` thiếu `name`, doc_id
+int vs str, artefact `\r\n` được phát hiện **giữa chừng lúc code**, không phải trước. Con số 92.1%
+câu hỏi 1-đáp-án ở mục 3 cũng ra đời kiểu ad hoc chứ không phải từ một báo cáo EDA có chủ đích.
+
+**Việc**: P2 chạy `scripts/eda.py` (khung có sẵn, xem repo) trên toàn bộ `train.json` +
+`data/selected-contexts/` **trước khi** chỉnh `chunker.py` lần cuối. Output: `docs/eda_notes.md`.
+
+**Tối thiểu phải trả lời**:
+1. Phân bố độ dài văn bản (từ) trong corpus — chunk size 256 token có hợp lý không?
+2. Bao nhiêu % văn bản có cấu trúc `Điều N` rõ, bao nhiêu % phải fallback sliding-window?
+3. Bao nhiêu % thiếu `name` / `link`?
+4. Phân bố số đáp án đúng/câu hỏi trên **toàn bộ** `train.json` (không chỉ mẫu) — xác nhận lại 92.1%.
+5. Có văn bản nào trùng/gần trùng nội dung không (hash hoặc so khớp thô)?
+6. Độ dài câu hỏi, có câu rỗng/lỗi định dạng không?
+7. `doc_id` trong `train.json` có phủ hết range xuất hiện trong corpus không, hay có id "mồ côi"?
+
+**Điều kiện đi tiếp**: nếu EDA phát hiện gì ảnh hưởng đến cấu trúc dữ liệu đã khóa trong
+`INTERFACES.md` (ví dụ chunk size cần đổi) → nêu ở standup thứ Hai, cả team đồng ý, sửa
+`INTERFACES.md` trước khi sửa code, đúng quy trình đã có sẵn ở đầu file đó.
+
+> Không lùi lịch: EDA chạy **song song** với phần còn lại của Tuần 1 (P2 đã đang đụng corpus rồi),
+> không phải một bước chặn tuần tiến độ.
+
+---
+
+### 0.6 Yêu cầu công bố khoa học từ BTC & câu hỏi nghiên cứu chính — bổ sung 09/08/2026
+
+BTC thông báo: đội có thứ hạng sẽ được mời viết bài công bố trên Tạp chí Phát triển Khoa học và
+Công nghệ ĐHQG-HCM, có phản biện. BTC yêu cầu rõ 3 điều, team lấy làm ràng buộc thiết kế thực
+nghiệm từ đây, không phải viết bài sau khi đã xong mô hình:
+
+1. Có **giả thuyết** rõ ràng trước khi thực nghiệm, không thực nghiệm rồi mới đi tìm câu chuyện để kể.
+2. Thực nghiệm phải **đủ kịch bản** để kiểm chứng giả thuyết — không chỉ đường thẳng "cái sau luôn tốt hơn cái trước".
+3. Với mỗi phương pháp: **vì sao chưa tốt, yếu ở đâu, phương pháp sau khắc phục điểm yếu gì** — không chỉ báo cáo con số cuối.
+
+**Câu hỏi nghiên cứu BTC đặt ra cho task năm nay**: với ngân sách < 4B tham số và ~10k điểm dữ liệu,
+phương pháp DL thuần túy hiệu quả ra sao so với phương pháp tận dụng sức mạnh LLM — tính cả ở tầng
+mô hình lẫn tầng chiến lược xử lý dữ liệu (trong khuôn khổ không augmentation, không dữ liệu ngoài).
+
+**Giả thuyết làm việc (draft — cả team review lại sau khi có số liệu Tuần 2, không phải chốt cứng ở đây)**:
+> Với ngân sách tham số nhỏ và chỉ ~7.000 cặp câu hỏi–đáp án để fine-tune, phương pháp khởi tạo từ
+> biểu diễn đã pretrain trên corpus lớn (LLM-leverage: bi-encoder/cross-encoder pretrained rồi
+> fine-tune nhẹ) sẽ vượt phương pháp DL thuần túy huấn luyện từ đầu — vì lượng dữ liệu task-specific
+> không đủ để tự học biểu diễn ngôn ngữ pháp lý từ số 0. Khoảng cách này sẽ **thu hẹp** nếu chiến lược
+> xử lý dữ liệu tốt (hard negative mining, hybrid, calibration) bù được phần nào chỗ dữ liệu ít.
+
+**⚠️ Lỗ hổng thực nghiệm hiện tại so với câu hỏi này**: kiến trúc mục 2 (BM25 → dense pretrained →
+fine-tune → rerank pretrained → calibration) chỉ có DUY NHẤT một baseline "không dùng LLM" là BM25 —
+mà BM25 là thống kê từ vựng cổ điển (term frequency), **không phải deep learning**. Nếu chỉ so
+BM25 vs {mọi mô hình pretrained}, team không có cách nào trả lời câu hỏi của BTC, vì thiếu ô so sánh
+"DL thật nhưng train from scratch, không tận dụng LLM pretrained". Cần bổ sung baseline này, xem bảng dưới.
+
+**Ma trận thực nghiệm tối thiểu để trả lời được câu hỏi** (mỗi ô = ít nhất 1 dòng `experiments.csv`,
+không phải chỉ ô cuối cùng team chọn để nộp):
+
+| Nhóm | Đại diện | Vai trò trong câu trả lời |
+|---|---|---|
+| Cổ điển, không học tham số | BM25 | Đường tham chiếu dưới cùng |
+| **DL thuần túy, train from scratch** *(mới, chưa có trong pipeline)* | Bi-encoder kiến trúc nhỏ (vd. mini-transformer hoặc BiLSTM/CNN encoder) huấn luyện **chỉ trên 7.000 cặp train**, KHÔNG load checkpoint pretrained | Trả lời trực tiếp "DL thuần túy làm được gì với ~10k điểm dữ liệu" |
+| LLM-leverage — embedding | BGE-M3 / Qwen3-Embedding / e5 fine-tune nhẹ | Trả lời phần "tận dụng LLM ở tầng biểu diễn" |
+| LLM-leverage — reranker | Cross-encoder fine-tune | Tận dụng LLM ở tầng xếp hạng lại |
+| Chiến lược dữ liệu (không phải model) | Hard negative mining, hybrid RRF, calibration số lượng doc | Trả lời phần "mở rộng ra chiến lược xử lý dữ liệu" mà BTC nhấn mạnh — áp dụng độc lập lên CẢ hai nhóm trên để xem chiến lược dữ liệu bù được bao nhiêu khoảng cách |
+
+**Việc cần làm**: P3 bổ sung 1 dòng công việc Tuần 2 — huấn luyện baseline "DL train from scratch,
+không pretrain" (chi phí thấp, mô hình nhỏ, vài epoch trên 7k cặp, không cần nhiều GPU). Không có ô
+này thì phần trả lời câu hỏi nghiên cứu của bài báo bị hổng ngay từ gốc.
+
+**Ràng buộc lên `experiments.csv` và notes hằng tuần** (cập nhật mục 0.3): mỗi dòng thí nghiệm từ nay
+thêm 3 cột: `nhom_so_sanh` (cổ_điển / dl_from_scratch / llm_leverage_embed / llm_leverage_rerank /
+chien_luoc_du_lieu), `gia_thuyet_lien_quan` (câu giả thuyết ở trên hay giả thuyết phụ nào), và
+`diem_yeu_khac_phuc_tu_exp_truoc` — bắt buộc điền, không được để trống bằng "cải thiện recall". Notes
+1 trang/tuần phải trả lời cho mỗi thí nghiệm mới: **thất bại/thành công ở điểm nào, vì sao, exp tiếp
+theo sửa gì** — đây chính là nguyên liệu bắt buộc BTC yêu cầu cho phần thảo luận của bài báo.
 
 ---
 
@@ -202,6 +290,7 @@ Vai trò là **trách nhiệm sở hữu**, không phải hàng rào.
 | 4 tài khoản Kaggle, verify phone để mở GPU | Cả team |
 | Xác nhận CodaLab hoạt động, Team Name đúng quy định | P1 |
 | Tải `selected-contexts.zip`, xác nhận đủ 8.532 file, thống kê độ dài passage thật | P2 |
+| **Chạy `scripts/eda.py`, tạo `docs/eda_notes.md`** (xem mục 0.5) | P2 |
 | **Gửi danh sách mô hình xin BTC duyệt** (mục 6) | P1 |
 | Repo Git + `INTERFACES.md` + `.gitignore` + `experiments.csv` (đã có sẵn, xem bộ khung v0.1) | P1 |
 | Đọc `docs/scoring_behaviour.md` — cả 4 người, không ai được bỏ qua | Cả team |
@@ -228,7 +317,7 @@ Vai trò là **trách nhiệm sở hữu**, không phải hàng rào.
 | Người | Việc |
 |---|---|
 | P2 | Chunker v2 dựa trên lỗi tuần 1. Bắt đầu hard negative mining |
-| P3 | Benchmark **zero-shot** 4–5 embedding model, chọn 2 tốt nhất. Hợp nhất RRF, tune trọng số |
+| P3 | Benchmark **zero-shot** 4–5 embedding model, chọn 2 tốt nhất. Hợp nhất RRF, tune trọng số. **Bổ sung**: huấn luyện baseline "DL train from scratch, không pretrain" trên 7k cặp (xem mục 0.6) — bắt buộc cho câu hỏi nghiên cứu của bài báo, chi phí thấp |
 | P4 | Benchmark **zero-shot** 2–3 reranker trên top-50 của BM25 |
 | P1 | Script encode chạy được cả MPS (M4) lẫn CUDA (Kaggle). **Release v0.2** |
 
@@ -236,7 +325,7 @@ Vai trò là **trách nhiệm sở hữu**, không phải hàng rào.
 
 ### Tuần 3 — Fine-tune bi-encoder (25/08 → 31/08)
 
-Tuần ngốn GPU nhất → phân bổ quota 4 tài khoản Kaggle từ đầu tuần.
+Tuần ngốn GPU nhất → phân bổ quota 4 tài khoản Kaggle từ đầu tuần; sẵn sàng đẩy phần fine-tune dư sang Colab Pro nếu quota Kaggle không đủ (mục 0.1).
 
 | Người | Việc |
 |---|---|
@@ -273,7 +362,7 @@ Tuần ngốn GPU nhất → phân bổ quota 4 tài khoản Kaggle từ đầu 
 - **Release v1.0.** Dry-run tái lập lần 2: xóa sạch môi trường, làm theo đúng README, phải ra đúng con số. Không ra đúng → README sai, sửa README chứ không sửa trí nhớ.
 - Nộp submission tốt nhất lên public test.
 - Script private test sẵn sàng: chỉ cần đổi đường dẫn file input.
-- Viết draft bài báo từ notes hằng tuần.
+- Viết draft bài báo từ notes hằng tuần — kiểm tra đủ 3 yêu cầu BTC (mục 0.6): giả thuyết nêu rõ, đủ kịch bản trong ma trận thực nghiệm, mỗi phương pháp có phân tích điểm yếu/khắc phục.
 
 ### 19/09 → 23/09 — Private test
 
@@ -328,7 +417,7 @@ Cổng mở đến 18/09 nhưng **hạn thực tế là ~10/09**. Đăng ký to�
 | Model chưa được duyệt kịp | Cao | Đăng ký rộng Tuần 0; chốt tuyệt đối 10/09 |
 | Giới hạn ứng viên vào 3.105 doc xuất hiện trong train | Cao | 5.427 doc còn lại chính là nơi chứa đáp án public/private. Luôn index đủ 8.532 |
 | Model HF bị tác giả cập nhật giữa chừng | Trung bình | Pin revision hash trong config |
-| Hết quota GPU Kaggle giữa tuần train | Trung bình | 4 tài khoản, checkpoint thường xuyên |
+| Hết quota GPU Kaggle giữa tuần train | Trung bình | 4 tài khoản, checkpoint thường xuyên; vượt quota thì chuyển sang Colab Pro (mục 0.1), không thêm tài khoản Kaggle |
 | Overfit vào nhãn nhiễu | Trung bình | Bỏ top-2 khi mining hard negative; theo dõi held-out |
 | Không viết được paper vì không hiểu code | **Cao với team này** | Notes 1 trang/người/tuần; quy tắc giải thích 3 phút |
 | Held-out lệch so với leaderboard | Trung bình | Đối chiếu 2 con số ngay Tuần 1 |
@@ -349,6 +438,7 @@ Cổng mở đến 18/09 nhưng **hạn thực tế là ~10/09**. Đăng ký to�
 - [ ] 4 tài khoản Kaggle đã verify, thấy được GPU quota (cả team)
 - [ ] Xác nhận CodaLab hoạt động, Team Name đúng quy định (P1)
 - [ ] Giải nén `selected-contexts.zip`, xác nhận đủ 8.532 file, thống kê độ dài passage thật (P2)
+- [ ] `docs/eda_notes.md` đã có đủ 7 mục ở 0.5 (P2)
 - [ ] Gửi danh sách mô hình xin duyệt cho BTC (P1)
 - [ ] Repo Git khởi tạo, MIT license, `experiments.csv` trống (P1)
 - [ ] **Submission giả nộp thành công, thấy điểm trên leaderboard** (P1)
