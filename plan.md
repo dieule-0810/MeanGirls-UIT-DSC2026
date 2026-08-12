@@ -1,9 +1,6 @@
 # DSC2026 — Task 1 LegalIR: Kế hoạch 6 tuần cho team 4 người
 
-> Bản v3 — cập nhật 07/08/2026, sau khi phân tích `scoring.py` + `metadata.yaml` của BTC.
-> Public test: 06/08 → 18/09/2026. Private test: 19/09 → 23/09/2026.
-> Trạng thái: **đã đăng ký đội xong**, đang trong public test.
-> Đăng ký mô hình: mở đến hết public test (18/09), nhưng **hạn thực tế ~10/09** vì BTC cần 5 ngày làm việc để duyệt.
+> Bản v4 — cập nhật 12/08/2026, chỉ thêm thông tin về model, không ảnh hưởng nhiều.
 
 ---
 
@@ -132,6 +129,8 @@ fine-tune → rerank pretrained → calibration) chỉ có DUY NHẤT một base
 mà BM25 là thống kê từ vựng cổ điển (term frequency), **không phải deep learning**. Nếu chỉ so
 BM25 vs {mọi mô hình pretrained}, team không có cách nào trả lời câu hỏi của BTC, vì thiếu ô so sánh
 "DL thật nhưng train from scratch, không tận dụng LLM pretrained". Cần bổ sung baseline này, xem bảng dưới.
+
+Quan sát để dành cho phần thảo luận (chưa phải kết luận, cần số liệu Tuần 2 xác nhận): với model đa ngữ, phần lớn "ngân sách tham số" thực ra nằm ở lớp vocab embedding chứ không phải năng lực transformer — mmarco-mMiniLMv2: ~82% tham số ở embedding; XLM-R-large: ~45%. Điều này gợi ý rằng dưới ràng buộc 4B "tính cả embedding" của BTC, ràng buộc siết vào vốn từ đa ngữ hơn là siết vào độ sâu mô hình.
 
 **Ma trận thực nghiệm tối thiểu để trả lời được câu hỏi** (mỗi ô = ít nhất 1 dòng `experiments.csv`,
 không phải chỉ ô cuối cùng team chọn để nộp):
