@@ -391,6 +391,8 @@ Cổng mở đến 18/09 nhưng **hạn thực tế là ~10/09**. Đăng ký to�
 - `Qwen/Qwen3-Reranker-0.6B`
 - `AITeamVN/Vietnamese_Reranker`
 - `namdp-ptit/ViRanker`
+- `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`
+- `jinaai/jina-reranker-v2-base-multilingual`
 
 **Lưu ý bắt buộc:**
 1. **Tự kiểm tra số tham số thực tế trên HuggingFace trước khi đăng ký** — danh sách trên dựa theo hiểu biết đến giữa 2025, con số có thể đã thay đổi.
