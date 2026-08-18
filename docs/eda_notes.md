@@ -92,7 +92,7 @@
 * Nếu downstream code gọi trực tiếp doc["name"] hoặc doc["passage"] mà không có phòng ngự, hệ thống sẽ bị crash (sập) ngay lập tức.
 
 **Phương án tạm thời:** 
-Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "") khi viết parser parse_corpus.py.
+* Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "") khi viết parser parse_corpus.py.
 
 ## 4. Phân bố số đáp án / câu hỏi
 
@@ -116,7 +116,7 @@ Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "")
 ```
 
 **Nhận xét:** Có tới 92.1% câu hỏi chỉ có đúng 1 đáp án đúng, phần còn lại (khoảng 8%) rải rác từ 2 đến 5 đáp án. Không có câu hỏi nào bị rỗng text.
-* Nếu luôn nộp đủ 5 tài liệu cho mọi câu hỏi, Recall đạt tối đa nhưng Precision bị chặn trên ở 0.218 (theo phân bố ngay phía trên). Đây là trần, chỉ đạt khi mọi gold lọt top-5; thực tế Recall@5 < 1 nên Precision còn thấp hơn. Con số 0.300 trong scoring_behaviour.md là hiện vật của fixture 2 câu dùng để dò hành vi scoring, không phải Precision của tập test — không dùng lẫn hai ngữ cảnh.
+* Nếu luôn nộp đủ 5 tài liệu cho mọi câu hỏi, Recall đạt tối đa nhưng Precision bị chặn trên ở 0.218 (theo phân bố ngay phía trên). Đây là trần, chỉ đạt khi mọi gold lọt top-5; thực tế Recall@5 < 1 nên Precision còn thấp hơn. Con số 0.300 trong scoring_behaviour.md là hiện vật của fixture 2 câu dùng để dò hành vi scoring, không phải Precision của tập test - không dùng lẫn hai ngữ cảnh.
 --> Việc luôn nộp đủ 5 doc làm sụt giảm Precision nghiêm trọng.
 
 **Phương án tạm thời:** 
@@ -249,7 +249,26 @@ Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "")
         ]
       }
     ]
-  }
+  },
+  "dup_passage_groups": [
+    [
+      "121575",
+      "84226"
+    ],
+    [
+      "158189",
+      "184972",
+      "206810"
+    ],
+    [
+      "254937",
+      "280171"
+    ],
+    [
+      "277743",
+      "35337"
+    ]
+  ]
 }
 ```
 
@@ -570,7 +589,7 @@ Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "")
 **Phương án tạm thời:**
 * P2: Sử dụng hàm trích xuất động extract_vung_chet_qids để tự động lọc bỏ hoàn toàn 11 câu hỏi vùng chết này trước khi chia tập train_split.json và holdout.json nhằm tránh gây nhiễu khi train và đảm bảo công bằng cho tập held-out.
 * Ghi lại danh sách 11 qid bị loại vào docs/excluded_questions.md hoặc cột riêng trong experiments.csv, vì việc này làm n_questions đổi từ 7000 -> 6989 xuyên suốt mọi báo cáo sau này - để người dry-run sau thấy số liệu lệch và hiểu
-* Loại khỏi holdout giả định tập test của BTC không chứa câu trỏ vào doc rỗng/hỏng tương tự; nếu test có mà holdout đã bỏ, held-out sẽ lạc quan hơn leaderboard một cách hệ thống - theo dõi như một nguồn của gap, nhưng đóng góp bị chặn ở 0.16% nên không thể một mình giải thích chênh lệch vượt ngưỡng — vẫn cần soi các nguyên nhân lớn hơn.
+* Loại khỏi holdout giả định tập test của BTC không chứa câu trỏ vào doc rỗng/hỏng tương tự; nếu test có mà holdout đã bỏ, held-out sẽ lạc quan hơn leaderboard một cách hệ thống - theo dõi như một nguồn của gap, nhưng đóng góp bị chặn ở 0.16% nên không thể một mình giải thích chênh lệch vượt ngưỡng - vẫn cần soi các nguyên nhân lớn hơn.
 
 ## 10. Đối chiếu Train vs Public
 
@@ -662,14 +681,45 @@ Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "")
 }
 ```
 
-**Nhận xét:** Top 5 outlier đều has_dieu: true — tức đều rơi vào nhóm 91.3% "có cấu trúc Điều" (mục 2), không phải nhóm 8.7% cần fallback như nghi ngờ ban đầu ở mục 1. Tuy nhiên mức độ tin cậy của từng file khác nhau rõ rệt sau khi soi text_head/text_tail. 
+**Nhận xét:** Top 5 outlier đều has_dieu: true - tức đều rơi vào nhóm 91.3% "có cấu trúc Điều" (mục 2), không phải nhóm 8.7% cần fallback như nghi ngờ ban đầu ở mục 1. Tuy nhiên mức độ tin cậy của từng file khác nhau rõ rệt sau khi soi text_head/text_tail. 
 (Lưu ý) đây là top 5 văn bản dài nhất toàn corpus theo n_words. Không loại trừ khả năng còn văn bản khác ngoài top 5 này cũng bị nhiễm rác tương tự id 4644
 * id 68843 (1.242.409 từ, lớn nhất): nhiều khả năng là dữ liệu thật. text_head có dấu hiệu lỗi định dạng nhỏ ở mục lục, nhưng không có bằng chứng gộp nhầm 2 văn bản.
-* id 4644 (571.358 từ): phát hiện nghiêm trọng — text_tail chứa nguyên văn thông báo bảo mật của chính website nguồn, không phải nội dung QCVN 22-2018. Đây là ô nhiễm dữ liệu do crawler lấy nhầm phần giao diện/popup tài khoản lẫn vào nội dung văn bản.
-* id 42223, 164898, 12964: text_head/text_tail đều khớp hợp lý với link tương ứng (chữ ký "BỘ TRƯỞNG", danh sách bộ kit xét nghiệm, bảng vùng biển hàng hải) — chưa thấy dấu hiệu bất thường, nhưng mới chỉ soi 200 ký tự đầu/cuối, chưa xác nhận toàn văn.
-* Ngoài vấn đề đúng/sai dữ liệu, ~34511 từ cho mỗi khoảng giữa 2 Điều ở file 68843 cho thấy: có cấu trúc Điều không đảm bảo cắt theo Điều sẽ ra chunk kích thước hợp lý — với văn bản QCVN/TCVN nhiều bảng biểu, một Điều đơn lẻ vẫn có thể dài tới hàng chục nghìn từ.
+* id 4644 (571.358 từ): phát hiện nghiêm trọng - text_tail chứa nguyên văn thông báo bảo mật của chính website nguồn, không phải nội dung QCVN 22-2018. Đây là ô nhiễm dữ liệu do crawler lấy nhầm phần giao diện/popup tài khoản lẫn vào nội dung văn bản.
+* id 42223, 164898, 12964: text_head/text_tail đều khớp hợp lý với link tương ứng (chữ ký "BỘ TRƯỞNG", danh sách bộ kit xét nghiệm, bảng vùng biển hàng hải) - chưa thấy dấu hiệu bất thường, nhưng mới chỉ soi 200 ký tự đầu/cuối, chưa xác nhận toàn văn.
+* Ngoài vấn đề đúng/sai dữ liệu, ~34511 từ cho mỗi khoảng giữa 2 Điều ở file 68843 cho thấy: có cấu trúc Điều không đảm bảo cắt theo Điều sẽ ra chunk kích thước hợp lý - với văn bản QCVN/TCVN nhiều bảng biểu, một Điều đơn lẻ vẫn có thể dài tới hàng chục nghìn từ.
 
 **Phương án tạm thời:**
 * P2: Kiểm tra chay context_4644.json trước khi đưa vào corpus_clean.jsonl; grep thử các cụm từ đặc trưng ("đăng nhập", "rò rỉ mật khẩu", "Quý Khách") trên toàn corpus để biết đây là lỗi cá biệt hay lỗi crawler lặp lại ở nhiều file khác.
 * P2: Lưu ý lỗi định dạng mục lục nhỏ của id 68843; giữ nguyên trong corpus.
-* P2: Rà chay toàn văn 3 file còn lại (42223, 164898, 12964)
+* P2: Rà chay toàn văn 3 file còn lại (42223, 164898, 12964) - xác nhận cả 3 file đều sạch sẽ(không phải lỗi parser gộp file hay lỗi crawler). Độ dài lớn hoàn toàn do đặc thù văn bản gốc
+
+## 12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler
+
+```json
+{
+  "total_infected_files": 239,
+  "percentage_infected": 2.8,
+  "eg_first_10": [
+    "context_100139.json",
+    "context_101375.json",
+    "context_103064.json",
+    "context_104500.json",
+    "context_105190.json",
+    "context_106740.json",
+    "context_107059.json",
+    "context_107707.json",
+    "context_110894.json",
+    "context_113090.json"
+  ]
+}
+```
+
+**Nhận xét:** Có 239 ứng viên nghi vấn (~2.8% corpus) dính từ khóa rộng.
+* Kiểm tra trực tiếp: gần như toàn bộ là False Positive - dùng "đăng nhập" đúng ngữ cảnh hành chính hợp pháp (cổng dịch vụ công, TABMIS, định danh điện tử...). KHÔNG coi các văn bản này là nhiễu BM25.
+* Số file thực sự ô nhiễm: chỉ 1 file - ID 4644, chứa chuỗi rác "bị rò rỉ mật khẩu và mất bảo mật...". Chỉ file này mới có rủi ro mất dữ liệu đuôi văn bản và gây term pollution thật cho BM25.
+
+**Phương án tạm thời:**
+* P2: Bổ sung Regex lọc chuỗi vào clean_text (parse_corpus.py). Xác nhận sạch qua verify tự động + scan rộng độc lập.
+* Cập nhật: Đã chạy scan rộng không giới hạn độ dài lần cuối trước v0.1 (333 ứng viên, 0/333 khớp pattern rác - xem docs/final_pollution_scan_v0.1.txt)
+* P4: Riêng ID 4644 - passage đã bị cắt cụt phần đuôi (do clean_text xóa từ vị trí "rò rỉ mật khẩu" trở đi). Nếu case lỗi BM25 rơi vào ID này, không phải bug retrieval mà là hệ quả chủ động của bước làm sạch.
+* Giới hạn đã biết: "Sạch 100%" ở corpus_clean.jsonl chỉ nghĩa là sạch-theo-5-pattern-đã-biết (xem CRAWLER_JUNK_PATTERNS trong parse_corpus.py). Nếu BM25 error analysis gặp case lạ dính rác web (đăng nhập/mật khẩu/quý khách) không thuộc 5 cụm này, đó là bằng chứng cần bổ sung pattern mới, không phải bug ở tầng retrieval.

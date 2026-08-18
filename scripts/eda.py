@@ -232,7 +232,7 @@ def answer_count_stats(train: dict[str, dict]) -> dict:
     mean_gold = sum(counts) / n
     # Trần trên của Precision KHI LUÔN nộp đủ 5 doc/câu, giả định mọi gold lọt top-5.
     # precision mỗi câu = min(|gold|,5)/5  (min để không vượt 1 nếu |gold|>5).
-    # Đây là CẬN TRÊN, không phải precision đo được — thực tế Recall@5<1 nên thấp hơn.
+    # Đây là CẬN TRÊN, không phải precision đo được - thực tế Recall@5<1 nên thấp hơn.
     precision_ceiling_always5 = sum(min(g, 5) for g in counts) / n / 5
 
     return {
@@ -380,6 +380,8 @@ def near_duplicate_stats(docs: list[dict], train: dict[str, dict]) -> dict:
         "eg": questions_at_risk_of_label_noise[:10]
     }
     
+    res["dup_passage_groups"] = dup_passage_groups
+    
     return res
 
 # ---------------------------------------------------------------------------
@@ -499,7 +501,7 @@ def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict]) ->
     }
 
 # ---------------------------------------------------------------------------
-# 10. Đối chiếu Train vs Public - kiểm tra qua trùng qid (public không lộ answer)
+# 10. Đối chiếu Train vs Public - kiểm tra qua trùng qid
 # ---------------------------------------------------------------------------
 
 def compare_train_public_stats(docs: list[dict], train: dict[str, dict], public_path: Path) -> dict:
@@ -583,6 +585,28 @@ def top_length_outliers(docs: list[dict], top_n: int = 5) -> dict:
         ),
     }
 
+### ---------------------------------------------------------------------------
+### 12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler (Tường bảo mật)
+### ---------------------------------------------------------------------------
+
+def check_crawler_pollution(docs: list[dict]) -> dict:
+    """
+    Rà soát và đếm số lượng file dính lỗi cào rác (Crawler Pollution) chứa thông báo bảo mật.
+    """
+    infected_files = []
+    keywords = ["rò rỉ mật khẩu", "đăng nhập", "quý khách"]
+    
+    for d in docs:
+        text = (d.get("passage") or "").strip().lower()
+        if any(kw in text for kw in keywords):
+            infected_files.append(d.get("_source_file"))
+            
+    return {
+        "total_infected_files": len(infected_files),
+        "percentage_infected": round(100 * len(infected_files) / (len(docs) or 1), 2),
+        "eg_first_10": sorted(infected_files)[:10]
+    }
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
@@ -630,6 +654,7 @@ def main():
         "9. Kiểm chứng Gold ID trỏ vào file lỗi": verify_gold_with_missing_fields(docs, train),
         "10. Đối chiếu Train vs Public": compare_train_public_stats(docs, train, args.public),
         "11. Chi tiết outlier độ dài (Tra cứu thủ công)": top_length_outliers(docs, top_n=5),
+        "12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler": check_crawler_pollution(docs),
     }
 
     print("\n=== TÓM TẮT ===")
@@ -643,6 +668,14 @@ def main():
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(render_markdown(results), encoding="utf-8")
     print(f"\nĐã ghi báo cáo: {args.out}")
+
+    # Xuất cụm trùng ra file riêng để split_data.py đọc lại
+    dup_clusters = results["5. Trùng / gần trùng văn bản"]["dup_passage_groups"]
+    dup_clusters_out = Path("data/dup_clusters.json")
+    dup_clusters_out.parent.mkdir(parents=True, exist_ok=True)
+    with open(dup_clusters_out, "w", encoding="utf-8") as f:
+        json.dump(dup_clusters, f, ensure_ascii=False, indent=2)
+    print(f"Đã ghi {len(dup_clusters)} cụm trùng ra: {dup_clusters_out}")
 
     n_orphan = results["7. Độ phủ doc_id (train vs corpus)"]["n_orphan_ids_in_train"]
     if n_orphan > 0:
