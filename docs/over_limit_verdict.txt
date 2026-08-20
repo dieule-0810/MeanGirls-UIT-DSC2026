@@ -1,0 +1,2 @@
+CHỈ CÂU VI PHẠM = 0 (câu q1 vẫn được tính)
+recall=0.5 precision=0.5

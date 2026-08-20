@@ -6,6 +6,8 @@ data/
 *.jsonl
 !configs/*.json
 !docs/*.json
+!tests/fixtures/*.json
+!vendor/btc_scoring/*.json
 
 # ── Trọng số & artefact nặng ─────────────────────────────────────────
 checkpoints/
