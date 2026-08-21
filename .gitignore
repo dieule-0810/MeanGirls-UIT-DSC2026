@@ -1,6 +1,6 @@
 # ── Dữ liệu của BTC: KHÔNG BAO GIỜ commit ────────────────────────────
 # Đẩy dữ liệu BTC lên GitHub là phát tán ra ngoài phạm vi cuộc thi.
-data/
+/data/
 !data/.gitkeep
 *.json
 *.jsonl
