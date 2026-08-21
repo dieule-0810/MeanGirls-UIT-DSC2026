@@ -114,9 +114,9 @@ Chạy trên private test: đổi `paths.questions` trong `configs/v0.1_bm25.yam
 
 | Kiểm tra | Giá trị kỳ vọng |
 |---|---|
-| Số văn bản trong `corpus_clean.jsonl` | `8532` |
-| SHA-256 của `corpus_clean.jsonl` | `758bf7cb54eb32305f79dec94408a3def3f8fe30ac6f96d4cc52d86e9e856c16` |
-| Số chunk trong `chunks.jsonl` | `525023` |
+| Số văn bản trong `corpus_clean.jsonl` | `8507` |
+| SHA-256 của `corpus_clean.jsonl` | `365306b58c0c14e87adce81a2b383a2245002faacb41b95928ddff4db0d73945` |
+| Số chunk trong `chunks.jsonl` | `524422` |
 | Recall trên `holdout.json` (seed 42) | `_(điền)_` |
 
 Checksum khớp nghĩa là bước tiền xử lý đã đúng, và mọi sai lệch còn lại nằm ở phần mô hình.

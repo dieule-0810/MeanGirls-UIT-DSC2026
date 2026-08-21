@@ -3,9 +3,11 @@ src/data/split_data.py - Bộ lọc bẫy "Vùng Chết", Chống rò rỉ Cụm
                           Chia tách 3 đường: train_split / holdout / error_pool (v5)
 
 Công dụng:
-    1. Quét corpus_clean.jsonl để tự động tìm ra các file tài liệu rỗng passage (20 file lỗi gốc).
-    2. Quét train.json để trích xuất động và loại bỏ hoàn toàn 11 câu hỏi "vùng chết" (unsolvable)
-       có đáp án trỏ vào các file rỗng này. Còn lại 6.989 câu hợp lệ.
+    1. Đọc danh sách 11 qid "vùng chết" và 4 cụm trùng đã chốt từ docs/exclusion_decisions.json
+       đã bị parse_corpus.py loại hẳn khỏi corpus, không còn dấu vết để quét động.
+    2. Loại bỏ hoàn toàn 11 câu hỏi "vùng chết" (unsolvable) khỏi train.json theo danh sách đã
+       chốt ở bước 1. Còn lại 6.989 câu hợp lệ. (Có kèm 1 bước quét chéo corpus_clean.jsonl để
+       cảnh báo nếu phát sinh doc rỗng MỚI ngoài danh sách đã biết - không dùng để tự động loại.)
     3. Chống rò rỉ cụm trùng bằng Union-Find: nếu 1 câu hỏi có đáp án bắc cầu qua 2 cụm trùng khác
        nhau, 2 cụm đó được GỘP thành 1 siêu-cụm để đảm bảo luôn nằm cùng 1 phía - áp dụng cho CẢ 3
        tập, không chỉ 2 như bản trước.
@@ -42,7 +44,9 @@ Cấu trúc mã nguồn:
     │  4. EXCLUDED WRITER (save_excluded_log)                        │
     ├────────────────────────────────────────────────────────────────┤
     │  5. CORE SPLITTER (split_data)                                 │
-    │     ├── Tìm doc_id rỗng -> Lọc vùng chết -> Gom nhóm           │
+    │     ├── Nạp dup_groups + vung_chet_qids từ                     │
+    │     │   exclusion_decisions.json (không tự dò từ corpus nữa)   │
+    │     ├── Lọc vùng chết khỏi train.json -> Gom nhóm chống rò rỉ  │
     │     ├── 1 vòng shuffle (seed 42), ưu tiên holdout->error_pool  │
     │     │   ->train_split -> giữ holdout y hệt bản trước           │
     │     ├── PRE-WRITE validate (in-memory) -> Ghi đĩa (4 file)     │
@@ -52,8 +56,8 @@ Cấu trúc mã nguồn:
     └────────────────────────────────────────────────────────────────┘
 
 Ghi chú (TODO):
-    - DEFAULT_DUP_GROUPS hiện hard-code theo eda_notes.md mục 5. Script đã có sẵn cơ chế nạp động từ
-      <out_dir>/dup_clusters.json nếu file tồn tại, nhưng eda.py CHƯA có bước ghi file này ra đĩa.
+    - dup_groups được nạp động từ docs/exclusion_decisions.json (do scripts/eda.py sinh ra) -
+      không hard-code trong file này nữa. Chạy scripts/eda.py trước nếu file chưa tồn tại.
     - Nếu P3 đã fine-tune thử trên train_split.json bản CŨ (5.989 câu, chưa trừ error_pool), phải
       chạy lại từ đầu sau khi có train_split.json mới (5.689 câu) - nếu không, 300 câu trong
       error_pool coi như KHÔNG còn "chưa từng thấy" đối với checkpoint cũ, làm hỏng mục đích ban đầu
@@ -70,18 +74,11 @@ from pathlib import Path
 # ===========================================================================
 # 1. CONSTANTS
 # ===========================================================================
-DEFAULT_DUP_GROUPS = [
-    {"121575", "84226"},
-    {"158189", "184972", "206810"},
-    {"254937", "280171"},
-    {"277743", "35337"},
-]
-
 EXPECTED_EXCLUDED = 11
 EXPECTED_HOLDOUT = 1000
 EXPECTED_ERROR_POOL = 300
-EXPECTED_TOTAL_VALID = 6989 # trừ 11 câu vùng chết
-EXPECTED_TRAIN_SPLIT = EXPECTED_TOTAL_VALID - EXPECTED_HOLDOUT - EXPECTED_ERROR_POOL  # 5689
+EXPECTED_TOTAL_VALID = None
+EXPECTED_TRAIN_SPLIT = None
 
 
 # ===========================================================================
@@ -245,38 +242,44 @@ def split_data(corpus_path: Path, train_path: Path, out_dir: Path) -> None:
     if not train_path.exists():
         raise FileNotFoundError(f"Không tìm thấy file train.json gốc tại: {train_path}")
 
-    dup_clusters_path = out_dir / "dup_clusters.json"
-    dup_groups = DEFAULT_DUP_GROUPS
-    if dup_clusters_path.exists():
-        try:
-            with open(dup_clusters_path, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            dup_groups = [set(str(i) for i in group) for group in loaded]
-            print(f"Đã tải động {len(dup_groups)} cụm trùng từ: {dup_clusters_path}")
-        except Exception as e:
-            print(f" Cảnh báo: Lỗi nạp cụm trùng từ {dup_clusters_path}: {e}. Dùng mặc định.")
-            dup_groups = DEFAULT_DUP_GROUPS
+    decisions_path = Path("docs/exclusion_decisions.json")
+    if not decisions_path.exists():
+        raise FileNotFoundError(
+            f"Không tìm thấy {decisions_path}. Chạy `python scripts/eda.py` trước để sinh file quyết định loại trừ."
+        )
+    decisions = json.loads(decisions_path.read_text(encoding="utf-8"))
+    dup_groups = [set(str(i) for i in group) for group in decisions["dup_groups"]]
+    print(f"Đã tải {len(dup_groups)} cụm trùng từ: {decisions_path}")
 
-    print("Đang phân tích kho văn bản sạch để tìm các tài liệu rỗng...")
-    empty_doc_ids = set()
-    with open(corpus_path, "r", encoding="utf-8") as f:
-        for line in f:
-            doc = json.loads(line)
-            if not doc.get("passage", "").strip():
-                empty_doc_ids.add(str(doc["id"]))
-    print(f"Phát hiện {len(empty_doc_ids)} tài liệu rỗng trong corpus_clean.")
+    # Qid vùng chết (docs/exclusion_decisions.json)
+    vung_chet_qids = set(decisions["qids_exclude_vung_chet"])
 
-    print("Đang quét tập câu hỏi train.json để phát hiện bẫy vùng chết...")
+    print(f"Đang đối chiếu tập câu hỏi train.json với {len(vung_chet_qids)} qid vùng chết đã chốt...")
     with open(train_path, "r", encoding="utf-8") as f:
         train_data = json.load(f)
 
+    global EXPECTED_TOTAL_VALID, EXPECTED_TRAIN_SPLIT
+    EXPECTED_TOTAL_VALID = len(train_data) - len(vung_chet_qids)
+    EXPECTED_TRAIN_SPLIT = EXPECTED_TOTAL_VALID - EXPECTED_HOLDOUT - EXPECTED_ERROR_POOL
+
     clean_train_data, excluded_questions = {}, []
     for qid, qdata in train_data.items():
-        answers_str = [str(a) for a in (qdata.get("answer") or [])]
-        if any(a in empty_doc_ids for a in answers_str):
+        if qid in vung_chet_qids:
+            answers_str = [str(a) for a in (qdata.get("answer") or [])]
             excluded_questions.append({"qid": qid, "question": qdata.get("question", ""), "answer": answers_str})
         else:
             clean_train_data[qid] = qdata
+
+    # Cảnh báo chéo: nếu corpus (dù đã bị loại 25 doc) vẫn còn dòng "text" rỗng khác vung_chet_qids,
+    # đó là dấu hiệu dữ liệu mới phát sinh chưa được đưa vào eda_notes.md - không tự động loại, chỉ báo.
+    empty_doc_ids_now = set()
+    with open(corpus_path, "r", encoding="utf-8") as f:
+        for line in f:
+            doc = json.loads(line)
+            if not doc.get("text", "").strip():
+                empty_doc_ids_now.add(str(doc["doc_id"]))
+    if empty_doc_ids_now:
+        print(f"  CẢNH BÁO: corpus vẫn còn {len(empty_doc_ids_now)} doc rỗng chưa nằm trong danh sách loại - kiểm tra lại eda_notes.md.")
     print(f"Phát hiện và loại bỏ thành công {len(excluded_questions)} câu hỏi Vùng Chết!")
     print(f"Còn lại {len(clean_train_data)} câu hợp lệ để chia 3 đường "
           f"({EXPECTED_HOLDOUT}/{EXPECTED_ERROR_POOL}/{EXPECTED_TRAIN_SPLIT}).")
@@ -330,7 +333,7 @@ def split_data(corpus_path: Path, train_path: Path, out_dir: Path) -> None:
                 f"error_pool: {len(error_pool_json)} (kỳ vọng {EXPECTED_ERROR_POOL}), "
                 f"train_split: {len(train_split_json)} (kỳ vọng {EXPECTED_TRAIN_SPLIT})"
             )
-        run_integrity_checks(splits, empty_doc_ids, dup_groups)
+        run_integrity_checks(splits, empty_doc_ids_now, dup_groups)
     except AssertionError as e:
         print(f"{e}")
         print("  => ĐÃ CHẶN ĐỨNG việc ghi tệp hỏng ra đĩa để tránh lỗi im lặng (silent failure).")
@@ -378,7 +381,7 @@ def split_data(corpus_path: Path, train_path: Path, out_dir: Path) -> None:
                 f"Lệch số lượng sau khi đọc lại từ đĩa - holdout: {len(holdout_reread)}, "
                 f"error_pool: {len(error_pool_reread)}, train_split: {len(train_split_reread)}"
             )
-        run_integrity_checks(reread_splits, empty_doc_ids, dup_groups)
+        run_integrity_checks(reread_splits, empty_doc_ids_now, dup_groups)
     except AssertionError as e:
         print(f"{e}")
         print("  => Kết quả trên đĩa KHÔNG khớp dữ liệu đã validate trong bộ nhớ (lỗi round-trip JSON).")

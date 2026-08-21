@@ -1,31 +1,34 @@
 """
 scripts/final_broad_pollution_scan.py
-Quét rộng LẦN CUỐI trên corpus_clean.jsonl trước khi tag v0.1 release.
-Không giới hạn <300 từ như ketquanghivan.txt (giới hạn đó chỉ để lọc bớt false-positive
-khi soi tay theo dõi thường xuyên). Ở đây mục đích khác: tìm biến thể rác CHƯA từng biết,
-nên quét toàn bộ, không lọc độ dài, để không bỏ sót file dài mà vẫn dính rác.
+Quét rộng LẦN CUỐI trên corpus_clean.jsonl trước khi tag release (đổi tên
+file output theo version hiện hành, không hard-code "v0.1").
+Không giới hạn độ dài văn bản khi soi (khác các lượt theo dõi thường xuyên trước đó, vốn
+giới hạn <300 từ để lọc bớt false-positive). Ở đây mục đích khác: tìm biến thể rác CHƯA
+từng biết, nên quét toàn bộ, không lọc độ dài, để không bỏ sót file dài mà vẫn dính rác.
+
+Lưu ý: corpus_clean.jsonl tại thời điểm quét đã qua bước loại trừ 25 doc_id (20 rỗng +
+5 trùng-dư, xem docs/exclusion_decisions.json) - n_scanned kỳ vọng là 8.507, không phải
+8.532 như bản quét trước 20/8.
 """
 
 import json
+import sys
 import unicodedata
 from pathlib import Path
 from collections import defaultdict
+
+# Thêm project root vào sys.path để import được src.data.parse_corpus
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.data.parse_corpus import CRAWLER_JUNK_PATTERNS as KNOWN_PATTERNS
 
 # Từ khóa rộng - CỐ Ý rộng hơn CRAWLER_JUNK_PATTERNS trong parse_corpus.py
 # để dò biến thể rác chưa biết, không phải để confirm lại pattern đã biết
 BROAD_KEYWORDS = ["đăng nhập", "mật khẩu", "quý khách", "rời quầy", "tài khoản của bạn"]
 
-# 5 cụm đã biết + đã xử lý trong parse_corpus.py - dùng để loại các match đã confirm sạch
-KNOWN_PATTERNS = [
-    "quý khách vui lòng đăng nhập",
-    "đăng nhập để xem",
-    "rò rỉ mật khẩu",
-    "vui lòng đăng nhập để",
-    "đăng nhập để tiếp tục",
-]
 
 def already_known(passage_nfc: str) -> bool:
     return any(p in passage_nfc for p in KNOWN_PATTERNS)
+
 
 def main():
     corpus_path = Path("data/corpus_clean.jsonl")
@@ -39,7 +42,7 @@ def main():
         for line in f:
             n_scanned += 1
             doc = json.loads(line)
-            passage_nfc = unicodedata.normalize("NFC", doc["passage"]).lower()
+            passage_nfc = unicodedata.normalize("NFC", doc["text"]).lower()
 
             if not passage_nfc:
                 continue
@@ -47,11 +50,11 @@ def main():
             for kw in BROAD_KEYWORDS:
                 if kw in passage_nfc:
                     idx = passage_nfc.find(kw)
-                    context = doc["passage"][max(0, idx - 60): idx + 150]
+                    context = doc["text"][max(0, idx - 60): idx + 150]
                     is_known = already_known(passage_nfc)
-                    hits_by_keyword[kw].append(doc["id"])
+                    hits_by_keyword[kw].append(doc["doc_id"])
                     records.append({
-                        "id": doc["id"],
+                        "id": doc["doc_id"],
                         "keyword": kw,
                         "known_pattern": is_known,
                         "context": context,
@@ -64,7 +67,7 @@ def main():
         "n_scanned": n_scanned,
         "n_hits_total": len(records),
         "n_hits_by_keyword": {k: len(v) for k, v in hits_by_keyword.items()},
-        "n_unknown_candidates": n_unknown,  # cần soi tay: pattern rác KHÔNG thuộc 5 cụm đã biết
+        "n_unknown_candidates": n_unknown,
         "records": records,
     }
 
@@ -79,7 +82,6 @@ def main():
     print(f"Ghi chi tiết vào: {out_path}")
     if n_unknown > 0:
         print("\n=> Còn ứng viên mới, cần soi tay để xác nhận rác thật hay false positive.")
-        print("   Lọc nhanh bằng: [r for r in report['records'] if not r['known_pattern']]")
     else:
         print("\n=> 0 ứng viên mới - không phát hiện biến thể rác nào chưa biết.")
 

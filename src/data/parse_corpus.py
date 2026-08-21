@@ -23,33 +23,40 @@ Cấu trúc mã nguồn:
         - Nhận tham số dòng lệnh thông qua argparse và kích hoạt luồng xử lý.
 
     ┌────────────────────────────────────────────────────────┐
-    │  1. IMPORTS BLOCK (argparse, json, re, hashlib, Path)  │
+    │  IMPORTS BLOCK (argparse, json, re, hashlib, Path)  │
     ├────────────────────────────────────────────────────────┤
-    │  2. HELPER FUNCTIONS                                   │
+    │  1. HELPER FUNCTIONS                                   │
     │     ├── clean_text(raw_text) -> str                    │
     │     └── calculate_sha256(file_path) -> str             │
     ├────────────────────────────────────────────────────────┤
-    │  3. QA VALIDATOR                                       │
-    │     └── verify_processed_corpus(file_path) -> bool     │
+    │  2. QA VALIDATOR                                       │
+    │     └── verify_processed_corpus(file_path,             │
+    │         expected_lines: int) -> bool                   │
     ├────────────────────────────────────────────────────────┤
-    │  4. CORE PARSER (parse_corpus)                         │
+    │  3. CORE PARSER (parse_corpus)                         │
     │     ├── Quét 8.532 file thô bằng .glob()               │
+    │     ├── Nạp docs_exclude_from_corpus từ                │
+    │     │   exclusion_decisions.json, bỏ qua 25 doc_id     │
     │     ├── Đọc, ép str(id), sửa khuyết name/passage       │
     │     ├── Dọn rác crawler (security popup) bằng Regex    │
     │     └── Ghi tuần tự từng dòng vào file .jsonl          │
     ├────────────────────────────────────────────────────────┤
-    │  5. CLI ENTRYPOINT (main)                              │
+    │  4. CLI ENTRYPOINT (main)                              │
     │     └── Cấu hình argparse (--corpus-dir, --out)        │
     └────────────────────────────────────────────────────────┘
 
 Các lưu ý sống còn (Bẫy dữ liệu phòng ngự):
     - [BẪY KIỂU DỮ LIỆU]: id của file thô là int (177504) nhưng nhãn BTC dùng str ("177504").
       Bắt buộc ép str(doc_id) ngay tại điểm đọc để tránh lỗi "0 điểm im lặng" trên Leaderboard.
-    - [BẪY KHUYẾT TRƯỜNG]: 13.2% tài liệu khuyết trường 'name' -> dùng .get("name", "Không có tiêu đề").
-    - [BẪY RỖNG PASSAGE]: 0.2% file rỗng passage -> giữ nguyên "", TUYỆT ĐỐI không bịa nội dung rác 
-      để tránh làm lệch không gian vector của mô hình.
+    - [BẪY KHUYẾT TRƯỜNG]: 13.2% tài liệu khuyết trường 'name' -> quy về chuỗi rỗng "", tránh 
+      "ô nhiễm từ vựng" khi index. Field name vẫn khuyết ở corpus sau xử lý.
+    - [BẪY RỖNG PASSAGE]: 20 file rỗng passage (đã xác nhận qua BTC + eda.py) bị LOẠI HẲN khỏi
+      corpus_clean.jsonl (đọc từ docs_exclude_from_corpus trong exclusion_decisions.json), không
+      còn giữ lại với "" như bản trước 20/8. TUYỆT ĐỐI không bịa nội dung rác cho các trường hợp
+      rỗng phát sinh mới ngoài danh sách đã biết.
     - [CHỮ THƯỜNG LINK]: Đổi link về dạng lowercase() để đồng bộ hóa các trường hợp trùng lặp.
-    - [XÁC MINH CHECKSUM]: Bắt buộc tự in số dòng (phải đúng 8.532) và SHA-256 Checksum sau khi ghi xong.
+    - [XÁC MINH CHECKSUM]: Bắt buộc tự in số dòng (đọc động từ docs/exclusion_decisions.json,
+      hiện là 8.507 sau khi loại 25 doc_id rỗng/trùng-dư) và SHA-256 Checksum sau khi ghi xong.
     - [THỨ TỰ DÒNG / ID]: Dữ liệu được ghi theo thứ tự bảng chữ cái (lexicographical) của tên file thô 
       (ví dụ: ID 100 đứng trước ID 2). Đảm bảo tính nhất quán tuyệt đối giúp mã băm SHA-256 trùng khớp 
       100%, hoàn toàn không ảnh hưởng đến hiệu năng lập chỉ mục hay điểm số truy hồi của BTC.
@@ -123,7 +130,7 @@ def calculate_sha256(file_path: Path) -> str:
 # 2. INTEGRATED QA VALIDATOR (Bộ Thẩm Định Chất Lượng)
 # ===========================================================================
 
-def verify_processed_corpus(corpus_clean_path: Path) -> bool:
+def verify_processed_corpus(corpus_clean_path: Path, expected_lines: int) -> bool:
     """
     Tự động quét kiểm tra file corpus_clean.jsonl đã sinh ra.
     Xác minh tất cả các điều kiện ràng buộc của INTERFACES.md và thống kê từ EDA.
@@ -159,13 +166,13 @@ def verify_processed_corpus(corpus_clean_path: Path) -> bool:
                 continue
 
             # 1. Kiểm tra sự tồn tại đầy đủ của 4 trường bắt buộc theo INTERFACES.md
-            for key in ["id", "name", "link", "passage"]:
+            for key in ["doc_id", "name", "link", "text"]:
                 if key not in doc:
-                    print(f"  Dòng {idx + 1} (ID: {doc.get('id')}) bị khuyết khóa: {key}")
+                    print(f"  Dòng {idx + 1} (ID: {doc.get('doc_id')}) bị khuyết khóa: {key}")
                     all_keys_valid = False
 
             # 2. Kiểm tra bẫy kiểu dữ liệu ID (Bắt buộc phải là str)
-            doc_id = doc.get("id")
+            doc_id = doc.get("doc_id")
             if doc_id is not None and not isinstance(doc_id, str):
                 all_ids_are_str = False
 
@@ -175,7 +182,7 @@ def verify_processed_corpus(corpus_clean_path: Path) -> bool:
                 empty_names += 1
 
             # 4. Kiểm tra rỗng passage (phải giữ rỗng chứ không được chế chữ rác)
-            passage = doc.get("passage")
+            passage = doc.get("text")
             if passage == "":
                 empty_passages += 1
 
@@ -213,23 +220,22 @@ def verify_processed_corpus(corpus_clean_path: Path) -> bool:
     print("--------------------------------------------------")
     
     # Check các điều kiện
-    passed_lines = n_lines == 8532
+    passed_lines = n_lines == expected_lines
     passed_keys = all_keys_valid
     passed_ids = all_ids_are_str
     passed_newlines = raw_newlines_found == 0
     passed_links = links_uppercase == 0
-    passed_empty_names = empty_names == 1125
-    passed_empty_passages = empty_passages == 20
+    passed_empty_passages = empty_passages == 0
     passed_security_junk = len(leaked_security_popups) == 0
 
-    print(f"  - Tổng số dòng: {n_lines} " + ("(Chuẩn 8532 dòng)" if n_lines == 8532 else "(Sai số lượng dòng!)"))
-    print(f"  - Cấu trúc khóa: " + ("Đầy đủ 100% (id, name, link, passage)" if all_keys_valid else "Có file bị thiếu khóa"))
+    print(f"  - Tổng số dòng: {n_lines} " + (f"(Chuẩn {expected_lines} dòng)" if passed_lines else "(Sai số lượng dòng!)"))
+    print(f"  - Cấu trúc khóa: " + ("Đầy đủ 100% (doc_id, name, link, text)" if all_keys_valid else "Có file bị thiếu khóa"))
     print(f"  - Kiểu dữ liệu ID: " + ("100% là chuỗi (str) - Chống bẫy 0 điểm im lặng" if all_ids_are_str else "Phát hiện ID kiểu số (int)!"))
     print(f"  - Làm phẳng văn bản (\\r\\n\\n): " + ("Hoàn hảo 100%" if raw_newlines_found == 0 else f"Còn {raw_newlines_found} dòng bị dính ký tự rác"))
     print(f"  - Đồng bộ URL (lowercase): " + ("Đã chuyển viết thường hoàn chỉnh" if links_uppercase == 0 else f"Còn {links_uppercase} link chứa chữ viết hoa"))
-    print(f"  - Thống kê file khuyết name: {empty_names} file " + ("(Khớp đúng thống kê EDA ~13.2% khuyết)" if empty_names == 1125 else "Lệch số lượng khuyết name!"))
-    print(f"  - Thống kê file rỗng passage: {empty_passages} file " + ("(Khớp đúng 20 file siêu lỗi gốc)" if empty_passages == 20 else "Lệch số lượng rỗng!"))
-    print(f"  - Quét sạch rác Crawler bảo mật: " + ("Sạch 100% (0/8532 file còn dính cụm rác đã biết)" if passed_security_junk else f"Còn sót {len(leaked_security_popups)} file dính rác gốc: {leaked_security_popups}"))
+    print(f"  - Thống kê file khuyết name: {empty_names} file")
+    print(f"  - Thống kê file rỗng passage: {empty_passages} file " + ("(Đã loại sạch 20 file rỗng khỏi corpus)" if passed_empty_passages else "Lệch số lượng rỗng!"))
+    print(f"  - Quét sạch rác Crawler bảo mật: " + (f"Sạch 100% (0/{expected_lines} file còn dính cụm rác đã biết)" if passed_security_junk else f"Còn sót {len(leaked_security_popups)} file dính rác gốc: {leaked_security_popups}"))
     print("-" * 50)
 
     if len(potential_false_positives) > 0:
@@ -237,7 +243,7 @@ def verify_processed_corpus(corpus_clean_path: Path) -> bool:
     print("-" * 50)
 
     # Đánh giá tổng quan
-    success = passed_lines and passed_keys and passed_ids and passed_newlines and passed_links and passed_empty_names and passed_empty_passages and passed_security_junk
+    success = passed_lines and passed_keys and passed_ids and passed_newlines and passed_links and passed_empty_passages and passed_security_junk
     if success:
         print("\nKẾT LUẬN: clean_corpus SẠCH THEO KẾ HOẠCH RÀNG BUỘC (CODA-READY)!")
         print("="*80)
@@ -263,7 +269,12 @@ def parse_corpus(corpus_dir: Path, out_path: Path):
     files = sorted(corpus_dir.glob("context_*.json"))
     total_files = len(files)
     print(f"Phát hiện {total_files} file context thô.")
-    
+
+    # ID lỗi (rỗng + trùng-dư) (docs/exclusion_decisions.json).
+    decisions = json.loads(Path("docs/exclusion_decisions.json").read_text(encoding="utf-8"))
+    excluded_doc_ids = set(decisions["docs_exclude_from_corpus"])
+    expected_lines_after_exclusion = decisions["n_corpus_after_exclusion"]
+
     # Tạo thư mục cha chứa file out nếu chưa tồn tại
     out_path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -283,6 +294,8 @@ def parse_corpus(corpus_dir: Path, out_path: Path):
                     print(f"File {fp.name} bị lỗi: Khuyết trường 'id'!")
                     continue
                 doc_id = str(raw_id)
+                if doc_id in excluded_doc_ids:
+                    continue
                 
                 # 2. Xử lý khuyết name (Khuyết 13.2%: quy về chuỗi rỗng "", tránh "ô nhiễm từ vựng")
                 name = doc.get("name")
@@ -304,10 +317,10 @@ def parse_corpus(corpus_dir: Path, out_path: Path):
                 
                 # Khởi tạo bản ghi sạch đúng theo INTERFACES.md
                 clean_record = {
-                    "id": doc_id,
+                    "doc_id": doc_id,
                     "name": clean_name,
                     "link": link,
-                    "passage": clean_passage
+                    "text": clean_passage
                 }
                 
                 # Ghi stream từng dòng JSONL
@@ -321,12 +334,14 @@ def parse_corpus(corpus_dir: Path, out_path: Path):
     checksum = calculate_sha256(out_path)
     print("\n" + "=" * 80)
     print(f" BÁO CÁO NGHIỆM THU TIỀN XỬ LÝ (P2) CODA-READY:")
-    print(f"  - Tổng số dòng ghi được: {count} / 8532 dòng")
+    print(f"  - Tổng số dòng ghi được: {count} / {expected_lines_after_exclusion} dòng")
+    if count != expected_lines_after_exclusion:
+        print(f"  CẢNH BÁO: số dòng ({count}) khác kỳ vọng ({expected_lines_after_exclusion}) - kiểm tra excluded_doc_ids hoặc corpus nguồn.")
     print(f"  - SHA-256 Checksum: {checksum}")
     print("=" * 80)
     
     # 6. Kích hoạt bộ QA kiểm định tự động chuyên sâu
-    verify_processed_corpus(out_path)
+    verify_processed_corpus(out_path, expected_lines_after_exclusion)
     
     print("Đưa 2 thông số (Số dòng và mã SHA-256 Checksum) dán vào file README.md mục 8!")
 

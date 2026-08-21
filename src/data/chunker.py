@@ -16,25 +16,34 @@ Cấu trúc mã nguồn:
         - Ưu tiên cắt theo "Điều N". Nếu Điều quá dài -> áp dụng sliding-window lồng bên trong.
         - Fallback sang sliding-window đối với các văn bản phi cấu trúc (TCVN/QCVN).
     3. QA VALIDATOR:
-        - verify_chunks_file(filepath): Bộ tự động thẩm định và thống kê chất lượng chunks sau khi xuất file.
-    4. ENTRYPOINT (main):
+        - verify_chunks_file(filepath, expected_docs): Bộ tự động thẩm định và thống kê chất lượng chunks.
+    4. CORE PIPELINE RUNNER (run_chunker):
+        - Đọc corpus_clean.jsonl, gọi chunk_document() cho từng doc, ghi ra chunks.jsonl,
+          kích hoạt verify_chunks_file() thẩm định ở cuối.
+    5. ENTRYPOINT (main):
         - Nhận tham số dòng lệnh thông qua argparse và kích hoạt luồng xử lý.
 
     ┌────────────────────────────────────────────────────────┐
-    │  1. IMPORTS BLOCK (argparse, json, re, hashlib, Path)  │
+    │  IMPORTS BLOCK (argparse, json, re, hashlib, Path)     │
     ├────────────────────────────────────────────────────────┤
-    │  2. HELPER FUNCTIONS                                   │
+    │  1. HELPER FUNCTIONS                                   │
     │     ├── sliding_window(text) -> list[str]              │
-    │     └── split_by_dieu(text) -> list[str]               │
+    │     ├── split_by_dieu(text) -> list[str]               │
+    │     └── sliding_window_with_dieu_tag(rc) -> list[str]  │
     ├────────────────────────────────────────────────────────┤
-    │  3. CORE CHUNKER (chunk_document)                      │
+    │  2. CORE CHUNKER (chunk_document)                      │
     │     └── Phối hợp Điều N và Fallback Sliding Window     │
     ├────────────────────────────────────────────────────────┤
-    │  4. QA VALIDATOR                                       │
-    │     └── verify_chunks_file(file_path) -> bool          │
+    │  3. QA VALIDATOR                                       │
+    │     └── verify_chunks_file(path,                       │
+    │         expected_docs: int | None) -> bool             │
+    ├────────────────────────────────────────────────────────┤
+    │  4. CORE PIPELINE RUNNER (run_chunker)                 │
+    │     └── Đọc corpus_clean -> chunk từng doc -> ghi file │
+    │         -> gọi verify_chunks_file() thẩm định cuối     │
     ├────────────────────────────────────────────────────────┤
     │  5. CLI ENTRYPOINT (main)                              │
-    │     └── Cấu hình argparse (--input, --out, --size)      │
+    │     └── Cấu hình argparse (--input, --out, --size)     │
     └────────────────────────────────────────────────────────┘
 
 Các lưu ý sống còn (Bẫy dữ liệu phòng ngự):
@@ -43,8 +52,8 @@ Các lưu ý sống còn (Bẫy dữ liệu phòng ngự):
     - [XỬ LÝ ĐIỀU SIÊU DÀI]: Dù tài liệu có cấu trúc Điều (91.3%), nếu một Điều đơn lẻ vượt quá ngưỡng chunk_size 
       (ví dụ các phụ lục, bảng biểu dính trong Điều), hệ thống vẫn tự động chạy sliding-window lồng bên trong 
       đoạn đó để băm nhỏ ra, bảo vệ mô hình khỏi lỗi tràn ngữ cảnh.
-    - [BỎ QUA PASSAGE RỖNG]: Với 20 file siêu lỗi bị rỗng passage, hệ thống sẽ bỏ qua không tạo bất kỳ chunk nào, 
-      giúp tinh gọn kho dữ liệu và tối ưu chỉ mục tìm kiếm.
+    - [BỎ QUA PASSAGE RỖNG]: chunk_document() trả về [] cho text rỗng - Lớp phòng ngự này kích hoạt nếu phát sinh
+      doc rỗng MỚI chưa từng biết trong dữ liệu tương lai.
     - [TỰ ĐỘNG THẨM ĐỊNH QA]: Tích hợp trực tiếp bộ QA đối soát ở cuối chương trình để kiểm tra cấu trúc khóa, 
       tính nhất quán của chunk_id, đồng thời in các thống kê thực chiến: số lượng chunk trung bình/max/min, 
       và tỷ lệ tài liệu phải fallback thực tế để đối chiếu với EDA.
@@ -134,24 +143,24 @@ def sliding_window_with_dieu_tag(rc: str, chunk_size: int, overlap: int) -> list
 # 2. CORE CHUNKER LOGIC
 # ===========================================================================
 
-def chunk_document(passage: str, chunk_size: int = 256, overlap: int = 64) -> list[str]:
+def chunk_document(text: str, chunk_size: int = 256, overlap: int = 64) -> list[str]:
     """
     Hàm chia nhỏ một văn bản pháp lý dựa trên chiến lược Chunker Lai:
     - Ưu tiên cắt theo Điều N tự nhiên.
     - Nếu Điều quá dài -> Cắt sliding-window lồng bên trong Điều đó.
     - Không có Điều N -> Fallback sang sliding-window toàn văn bản.
     """
-    if not passage or not passage.strip():
+    if not text or not text.strip():
         return []
         
     # Thử phân tách theo cấu trúc "Điều N"
-    raw_chunks = split_by_dieu(passage)
+    raw_chunks = split_by_dieu(text)
     
     final_chunks = []
     
     if not raw_chunks:
         # TRƯỜNG HỢP 1: FALLBACK SLIDING WINDOW (8.7% văn bản phi cấu trúc)
-        final_chunks = sliding_window(passage, chunk_size, overlap)
+        final_chunks = sliding_window(text, chunk_size, overlap)
     else:
         # TRƯỜNG HỢP 2: CẮT THEO ĐIỀU N (91.3% văn bản cấu trúc luật)
         for rc in raw_chunks:
@@ -172,7 +181,7 @@ def chunk_document(passage: str, chunk_size: int = 256, overlap: int = 64) -> li
 # 3. INTEGRATED QA VALIDATOR (Bộ Thẩm Định Chất Lượng Chunks)
 # ===========================================================================
 
-def verify_chunks_file(chunks_path: Path) -> bool:
+def verify_chunks_file(chunks_path: Path, expected_docs: int | None = None) -> bool:
     """
     Tự động quét và thẩm định toàn bộ file chunks.jsonl sau khi sinh ra.
     Kiểm chứng các quy chuẩn trong INTERFACES.md và thống kê chỉ số thực chiến.
@@ -189,7 +198,7 @@ def verify_chunks_file(chunks_path: Path) -> bool:
     all_keys_valid = True
     all_chunk_ids_well_formatted = True
     all_doc_ids_are_str = True
-    empty_passages_found = 0
+    empty_text_found = 0
     
     # Lưu vết số lượng chunk của từng tài liệu để tính toán phân bố
     doc_chunk_counts = {}
@@ -205,7 +214,7 @@ def verify_chunks_file(chunks_path: Path) -> bool:
                 continue
 
             # 1. Kiểm tra sự tồn tại đầy đủ của 4 khóa bắt buộc theo INTERFACES.md
-            for key in ["chunk_id", "doc_id", "passage", "name"]:
+            for key in ["chunk_id", "doc_id", "position", "text"]:
                 if key not in chunk:
                     print(f"  Dòng {idx + 1} (Chunk ID: {chunk.get('chunk_id')}) bị khuyết khóa: {key}")
                     all_keys_valid = False
@@ -224,10 +233,10 @@ def verify_chunks_file(chunks_path: Path) -> bool:
                 if len(parts) != 2 or parts[0] != doc_id or not parts[1].isdigit():
                     all_chunk_ids_well_formatted = False
 
-            # 4. Kiểm tra passage trống
-            passage = chunk.get("passage", "")
-            if not passage.strip():
-                empty_passages_found += 1
+            # 4. Kiểm tra text trống
+            text_content  = chunk.get("text", "")
+            if not text_content .strip():
+                empty_text_found += 1
                 
             # Ghi nhận số lượng chunk cho doc_id
             if doc_id:
@@ -245,11 +254,16 @@ def verify_chunks_file(chunks_path: Path) -> bool:
     avg_chunks = sum(counts) / len(counts) if counts else 0
 
     print(f"  - Tổng số chunks tạo thành: {total_chunks}")
-    print(f"  - Tổng số tài liệu được chunking: {n_docs_chunked} / 8532 doc gốc")
-    print(f"  - Cấu trúc khóa: " + ("Đầy đủ 100% (chunk_id, doc_id, passage, name)" if all_keys_valid else "Có chunk bị thiếu khóa"))
+    if expected_docs is not None:
+        print(f"  - Tổng số tài liệu được chunking: {n_docs_chunked} / {expected_docs} doc gốc trong corpus_clean.jsonl")
+        if n_docs_chunked != expected_docs:
+            print(f"  CẢNH BÁO: {expected_docs - n_docs_chunked} doc không sinh ra chunk nào (có thể do passage rỗng chưa lọc hết).")
+    else:
+        print(f"  - Tổng số tài liệu được chunking: {n_docs_chunked}")
+    print(f"  - Cấu trúc khóa: " + ("Đầy đủ 100% (chunk_id, doc_id, position, text)" if all_keys_valid else "Có chunk bị thiếu khóa"))
     print(f"  - Định dạng Chunk ID (nối bằng ::): " + ("Hoàn hảo 100%" if all_chunk_ids_well_formatted else "Chunk ID sai quy cách!"))
     print(f"  - Kiểu dữ liệu ID tài liệu: " + ("100% là chuỗi (str) - Chống bẫy 0 điểm im lặng" if all_doc_ids_are_str else "Phát hiện doc_id kiểu số (int)!"))
-    print(f"  - Số lượng passage rỗng: " + ("Hoàn hảo (0 chunk rỗng)" if empty_passages_found == 0 else f"Phát hiện {empty_passages_found} chunk bị rỗng passage!"))
+    print(f"  - Số lượng text rỗng: " + ("Hoàn hảo (0 chunk rỗng)" if empty_text_found == 0 else f"Phát hiện {empty_text_found} chunk bị rỗng text!"))
     print(f"  - Phân bố chunks trên mỗi văn bản:")
     print(f"    * Trung bình: {avg_chunks:.2f} chunks/doc")
     print(f"    * Lớn nhất (Max): {max_chunks} chunks (Outlier nhiều đoạn)")
@@ -257,7 +271,7 @@ def verify_chunks_file(chunks_path: Path) -> bool:
     print("-" * 50)
 
     # Đánh giá tổng quan
-    success = total_chunks > 0 and all_keys_valid and all_chunk_ids_well_formatted and all_doc_ids_are_str and empty_passages_found == 0
+    success = total_chunks > 0 and all_keys_valid and all_chunk_ids_well_formatted and all_doc_ids_are_str and empty_text_found == 0
     if success:
         print("\n KẾT LUẬN: KHO CHUNKS ĐẠT THEO KẾ HOẠCH (CODA-READY)!")
         print("=" * 80)
@@ -294,24 +308,23 @@ def run_chunker(input_path: Path, out_path: Path, chunk_size: int, overlap: int)
             count_docs += 1
             doc = json.loads(line)
             
-            doc_id = doc["id"]
-            passage = doc.get("passage", "")
-            name = doc.get("name", "")
+            doc_id = doc["doc_id"]
+            text = doc.get("text", "")
             
             # Kiểm tra xem tài liệu này có phải fallback sliding window hay không
-            is_fallback = passage.strip() and not bool(re.search(DIEU_PATTERN, passage))
+            is_fallback = text.strip() and not bool(re.search(DIEU_PATTERN, text))
             if is_fallback:
                 fallback_docs += 1
                 
             # Tiến hành chia nhỏ văn bản
-            chunks = chunk_document(passage, chunk_size, overlap)
+            chunks = chunk_document(text, chunk_size, overlap)
             
             for seq_idx, chunk_text in enumerate(chunks):
                 chunk_record = {
-                    "chunk_id": f"{doc_id}::{seq_idx}",
+                    "chunk_id": f"{doc_id}::{seq_idx:04d}",
                     "doc_id": doc_id,
-                    "passage": chunk_text,
-                    "name": name
+                    "position": seq_idx,
+                    "text": chunk_text,
                 }
                 out_f.write(json.dumps(chunk_record, ensure_ascii=False) + "\n")
                 count_chunks += 1
@@ -321,7 +334,7 @@ def run_chunker(input_path: Path, out_path: Path, chunk_size: int, overlap: int)
     print(f"Thống kê sơ bộ: Có {fallback_docs} / {count_docs} tài liệu fallback sliding-window (~{fallback_docs / count_docs * 100:.1f}%)")
     
     # Khởi chạy bộ thẩm định chất lượng tự động
-    verify_chunks_file(out_path)
+    verify_chunks_file(out_path, expected_docs=count_docs)
     
     print(f"\nĐiền thông số Tổng số chunks ({count_chunks}) dán vào file README.md mục 8!")
 
