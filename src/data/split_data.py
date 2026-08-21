@@ -24,7 +24,7 @@ Công dụng:
        assert 3 cặp giao nhau = rỗng VÀ assert tổng 3 tập = 6.989.
        Fail-loud: raise ngay, không chỉ in warning. Không có trường hợp nào ghi file hỏng ra đĩa.
     7. POST-WRITE VALIDATOR: đọc ngược dữ liệu từ đĩa, chạy lại đúng bộ kiểm tra ở bước 6 (dùng
-       chung 1 hàm RUN_INTEGRITY_CHECKS). Nếu fail thì ROLLBACK (xoá cả 4 file vừa ghi) trước khi
+       chung 1 hàm run_integrity_checks). Nếu fail thì ROLLBACK (xoá cả 4 file vừa ghi) trước khi
        raise, không để lại dữ liệu hỏng trên đĩa.
 
 Cách chạy:
@@ -36,7 +36,7 @@ Cấu trúc mã nguồn:
     ├────────────────────────────────────────────────────────────────┤
     │  2. UNION-FIND + build_anti_leak_groups                        │
     ├────────────────────────────────────────────────────────────────┤
-    │  3. RUN_INTEGRITY_CHECKS (N-way, dùng chung pre/post-write)    │
+    │  3. run_integrity_checks (N-way, dùng chung pre/post-write)    │
     │     ├── Check vùng chết (toàn bộ các tập gộp lại)              │
     │     ├── Check giao nhau từng CẶP tập (C(n,2) cặp)              │
     │     └── Check rò rỉ cụm trùng (1 cụm chỉ được ở 1 tập)         │
@@ -168,7 +168,7 @@ def _merge_dup_groups_via_data(combined_data: dict, dup_groups: list) -> list:
     return list(merged.values())
 
 
-def RUN_INTEGRITY_CHECKS(splits: dict, empty_doc_ids: set, dup_groups: list) -> None:
+def run_integrity_checks(splits: dict, empty_doc_ids: set, dup_groups: list) -> None:
     """
     Bộ kiểm tra lõi cho N tập (đặt tên qua dict, vd {"holdout": ..., "train_split": ...,
     "error_pool": ...}). Raise AssertionError NGAY khi phát hiện vi phạm - fail-loud, không chỉ
@@ -333,7 +333,7 @@ def split_data(corpus_path: Path, train_path: Path, out_dir: Path) -> None:
                 f"error_pool: {len(error_pool_json)} (kỳ vọng {EXPECTED_ERROR_POOL}), "
                 f"train_split: {len(train_split_json)} (kỳ vọng {EXPECTED_TRAIN_SPLIT})"
             )
-        RUN_INTEGRITY_CHECKS(splits, empty_doc_ids_now, dup_groups)
+        run_integrity_checks(splits, empty_doc_ids_now, dup_groups)
     except AssertionError as e:
         print(f"{e}")
         print("  => ĐÃ CHẶN ĐỨNG việc ghi tệp hỏng ra đĩa để tránh lỗi im lặng (silent failure).")
@@ -381,7 +381,7 @@ def split_data(corpus_path: Path, train_path: Path, out_dir: Path) -> None:
                 f"Lệch số lượng sau khi đọc lại từ đĩa - holdout: {len(holdout_reread)}, "
                 f"error_pool: {len(error_pool_reread)}, train_split: {len(train_split_reread)}"
             )
-        RUN_INTEGRITY_CHECKS(reread_splits, empty_doc_ids_now, dup_groups)
+        run_integrity_checks(reread_splits, empty_doc_ids_now, dup_groups)
     except AssertionError as e:
         print(f"{e}")
         print("  => Kết quả trên đĩa KHÔNG khớp dữ liệu đã validate trong bộ nhớ (lỗi round-trip JSON).")

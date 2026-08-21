@@ -252,7 +252,26 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
         ]
       }
     ]
-  }
+  },
+  "dup_passage_groups": [
+    [
+      "121575",
+      "84226"
+    ],
+    [
+      "158189",
+      "184972",
+      "206810"
+    ],
+    [
+      "254937",
+      "280171"
+    ],
+    [
+      "277743",
+      "35337"
+    ]
+  ]
 }
 ```
 
@@ -776,7 +795,7 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 **Phương án tạm thời:**
 * P2: Kiểm tra chay context_4644.json trước khi đưa vào corpus_clean.jsonl; grep thử các cụm từ đặc trưng ("đăng nhập", "rò rỉ mật khẩu", "Quý Khách") trên toàn corpus để biết đây là lỗi cá biệt hay lỗi crawler lặp lại ở nhiều file khác.
 * P2: Lưu ý lỗi định dạng mục lục nhỏ của id 68843; giữ nguyên trong corpus.
-* P2: Rà chay toàn văn 3 file còn lại (42223, 164898, 12964)
+* P2: Rà chay toàn văn 3 file còn lại (42223, 164898, 12964) - xác nhận cả 3 file đều sạch sẽ (không phải lỗi parser gộp file hay lỗi crawler). Độ dài lớn hoàn toàn do đặc thù văn bản gốc
 
 ## 12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler
 
@@ -798,6 +817,7 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
   ]
 }
 ```
+
 **Nhận xét:** Có 239 ứng viên nghi vấn (~2.8% corpus) dính từ khóa rộng.
 * Kiểm tra trực tiếp: gần như toàn bộ là False Positive - dùng "đăng nhập" đúng ngữ cảnh hành chính hợp pháp (cổng dịch vụ công, TABMIS, định danh điện tử...). KHÔNG coi các văn bản này là nhiễu BM25.
 * Số file thực sự ô nhiễm: chỉ 1 file - ID 4644, chứa chuỗi rác "bị rò rỉ mật khẩu và mất bảo mật...". Chỉ file này mới có rủi ro mất dữ liệu đuôi văn bản và gây term pollution thật cho BM25.
