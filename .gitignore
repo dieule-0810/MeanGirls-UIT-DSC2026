@@ -25,6 +25,7 @@ runs/
 outputs/
 submission*.zip
 *.log
+docs/exclusion_decisions.json
 
 # ── Python ───────────────────────────────────────────────────────────
 __pycache__/
