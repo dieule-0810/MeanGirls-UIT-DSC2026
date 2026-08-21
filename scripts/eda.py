@@ -251,45 +251,34 @@ def answer_count_stats(train: dict[str, dict]) -> dict:
 # 5. Trùng / gần trùng văn bản (kiểm tra thô bằng hash sau khi chuẩn hoá)
 # ---------------------------------------------------------------------------
 
-def near_duplicate_stats(docs: list[dict], train: dict[str, dict]) -> dict:
+def _group_duplicate_passages(docs: list[dict]) -> tuple[list[list[str]], dict[str, str]]:
     def normalize(text: str) -> str:
         return re.sub(r"\s+", " ", text or "").strip().lower()
-        
+
     passage_hashes = {}
-    link_groups = {}
-    
-    # Map từ doc_id (str) sang link gốc
     id_to_link = {str(d.get("id")): (d.get("link") or "") for d in docs}
 
-    train_referenced_ids = {str(a) for item in train.values() for a in (item.get("answer") or [])}
-    
     for d in docs:
-        doc_id = d.get("id")
-        doc_id_str = str(doc_id) if doc_id is not None else ""
-        
-        # Xử lý trùng lặp nội dung (passage)
-        text = d.get("passage") or ""
-        norm = normalize(text)
-        
+        doc_id_str = str(d.get("id")) if d.get("id") is not None else ""
+        norm = normalize(d.get("passage") or "")
         if norm:
             h = hashlib.md5(norm.encode("utf-8")).hexdigest()
-            if h in passage_hashes:
-                passage_hashes[h].append(doc_id_str)
-            else:
-                passage_hashes[h] = [doc_id_str]
-                
-        # Xử lý trùng lặp đường dẫn (link)
+            passage_hashes.setdefault(h, []).append(doc_id_str)
+
+    dup_passage_groups = [ids for ids in passage_hashes.values() if len(ids) > 1]
+    return dup_passage_groups, id_to_link
+
+def near_duplicate_stats(docs: list[dict], train: dict[str, dict],
+                        dup_passage_groups: list[list[str]], id_to_link: dict[str, str]) -> dict:
+    link_groups = {}
+    train_referenced_ids = {str(a) for item in train.values() for a in (item.get("answer") or [])}
+
+    for d in docs:
         link = (d.get("link") or "").strip()
         if link:
-            if link in link_groups:
-                link_groups[link].append(doc_id_str)
-            else:
-                link_groups[link] = [doc_id_str]
-                
-    # Lọc ra các nhóm thực sự bị trùng
-    dup_passage_groups = [ids for ids in passage_hashes.values() if len(ids) > 1]
+            link_groups.setdefault(link, []).append(str(d.get("id")))
+
     dup_link_groups = [ids for ids in link_groups.values() if len(ids) > 1]
-    
     dup_passage_sets = [set(group) for group in dup_passage_groups]
     
     # Join #1: Nhóm ID trùng có gán làm đáp án hợp lệ (đa đáp án)?
@@ -450,7 +439,9 @@ def check_name_passage_overlap(docs: list[dict]) -> dict:
 # 9. Kiểm chứng Gold ID trỏ vào file lỗi
 # ---------------------------------------------------------------------------
 
-def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict]) -> dict:
+def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict],
+                                    dup_passage_groups: list[list[str]],
+                                    id_to_link: dict[str, str]) -> dict:
     missing_name_ids = {str(d.get("id")) for d in docs if "name" not in d}
     empty_passage_ids = {str(d.get("id")) for d in docs if "passage" in d and not d.get("passage")}
 
@@ -458,11 +449,14 @@ def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict]) ->
     mismatch_passage_cases = []
     doc_hit_count_name = Counter()
     doc_hit_count_passage = Counter()
+    doc_to_qids: dict[str, list[str]] = {}
 
+    # --- Phần rỗng ---
     for qid, item in train.items():
         answers = [str(a) for a in (item.get("answer") or [])]
         question_text = item.get("question") or ""
         for ans_id in answers:
+            doc_to_qids.setdefault(ans_id, []).append(qid)
             if ans_id in missing_name_ids:
                 mismatch_name_cases.append({"qid": qid, "gold_id": ans_id,
                     "question": question_text[:80] + "..." if len(question_text) > 80 else question_text})
@@ -475,26 +469,82 @@ def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict]) ->
     n_name_live = len(doc_hit_count_name)
     n_passage_live = len(doc_hit_count_passage)
 
+    # --- Phần trùng ---
+    duplicate_groups_out = []
+    ids_recommended_remove = []
+    qids_need_gold_remap = []   # gold đang trỏ vào ID sẽ bị loại trong nhóm trùng -> SỬA gold, không loại câu
+    qids_manual_review = []     # nhóm có >=2 gold khác câu -> không tự quyết được
+
+    for group in dup_passage_groups:
+        gold_members = {i: doc_to_qids[i] for i in group if i in doc_to_qids}
+
+        if len(gold_members) == 0:
+            keep = sorted(group, key=lambda x: (len(x), x))[0]
+            action = "Không thành viên nào là gold — tie-break, giữ ID nhỏ nhất."
+            needs_review = False
+        elif len(gold_members) == 1:
+            keep = next(iter(gold_members))
+            action = f"Giữ ID đang là gold ({keep})."
+            needs_review = False
+        else:
+            keep = None
+            action = "CẦN XEM THỦ CÔNG — nhiều hơn 1 thành viên là gold của các câu khác nhau."
+            needs_review = True
+
+        remove = sorted(set(group) - {keep}) if keep else []
+        ids_recommended_remove.extend(remove)
+
+        if needs_review:
+            qids_manual_review.extend(q for qs in gold_members.values() for q in qs)
+        else:
+            for removed_id in remove:
+                qids_need_gold_remap.extend(doc_to_qids.get(removed_id, []))
+
+        duplicate_groups_out.append({
+            "group_ids": sorted(group),
+            "links": [id_to_link.get(i, "") for i in group],
+            "gold_members": gold_members,
+            "recommended_keep": keep,
+            "recommended_remove": remove,
+            "action": action,
+            "needs_manual_review": needs_review,
+        })
+
+    # --- Kết luận ---
+    qids_exclude_unsolvable = sorted({c["qid"] for c in mismatch_passage_cases})
+    qids_need_gold_remap = sorted(set(qids_need_gold_remap) - set(qids_exclude_unsolvable))
+    qids_manual_review = sorted(set(qids_manual_review))
+
     return {
         "gold_missing_name_summary": {
             "count_questions": len(mismatch_name_cases),
-            "pct_of_train_questions": round(100 * len(mismatch_name_cases) / (len(train) or 1), 2),
             "n_unique_docs_affected": n_name_live,
-            "pct_of_error_set_that_matters": round(100 * n_name_live / (len(missing_name_ids) or 1), 1),
-            "top_offenders": doc_hit_count_name.most_common(5),
-            "top_offender_pct_of_cases": round(100 * doc_hit_count_name.most_common(1)[0][1] / (len(mismatch_name_cases) or 1), 1) if mismatch_name_cases else 0,
             "total_docs_with_missing_name": len(missing_name_ids),
             "cases": mismatch_name_cases[:20],
         },
-        "gold_empty_passage_VÙNG_CHẾT_summary": {
+        "gold_empty_passage_VUNG_CHET_summary": {
             "count_questions": len(mismatch_passage_cases),
-            "pct_of_train_questions": round(100 * len(mismatch_passage_cases) / (len(train) or 1), 2),
             "n_unique_docs_affected": n_passage_live,
-            "pct_of_error_set_that_matters": round(100 * n_passage_live / (len(empty_passage_ids) or 1), 1),
-            "top_offenders": doc_hit_count_passage.most_common(5),
-            "top_offender_pct_of_cases": round(100 * doc_hit_count_passage.most_common(1)[0][1] / (len(mismatch_passage_cases) or 1), 1) if mismatch_passage_cases else 0,
             "total_docs_with_empty_passage": len(empty_passage_ids),
             "cases": mismatch_passage_cases[:20],
+        },
+        "gold_duplicate_passage_summary": {
+            "n_groups": len(dup_passage_groups),
+            "n_groups_needs_manual_review": sum(1 for g in duplicate_groups_out if g["needs_manual_review"]),
+            "n_ids_recommended_remove": len(ids_recommended_remove),
+            "groups": duplicate_groups_out,
+        },
+        "ket_luan": {
+            "docs_recommended_exclude_from_corpus": sorted(empty_passage_ids | set(ids_recommended_remove)),
+            "n_docs_recommended_exclude_from_corpus": len(empty_passage_ids | set(ids_recommended_remove)),
+            "n_corpus_after_exclusion": len(docs) - len(empty_passage_ids | set(ids_recommended_remove)),
+            "qids_exclude_unsolvable_vung_chet": qids_exclude_unsolvable,
+            "n_qids_exclude_unsolvable": len(qids_exclude_unsolvable),
+            "qids_need_gold_remap_not_exclude": qids_need_gold_remap,
+            "n_qids_need_gold_remap": len(qids_need_gold_remap),
+            "qids_needs_manual_review": qids_manual_review,
+            "n_qids_needs_manual_review": len(qids_manual_review),
+            "ready_to_apply": len(qids_manual_review) == 0,
         },
     }
 
@@ -583,6 +633,38 @@ def top_length_outliers(docs: list[dict], top_n: int = 5) -> dict:
         ),
     }
 
+### ---------------------------------------------------------------------------
+### 12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler (Tường bảo mật)
+### ---------------------------------------------------------------------------
+
+def check_crawler_pollution(docs: list[dict]) -> dict:
+    """
+    Rà soát và đếm số lượng file dính lỗi cào rác (Crawler Pollution) chứa thông báo bảo mật.
+    """
+    infected_files = []
+    keywords = ["rò rỉ mật khẩu", "đăng nhập", "quý khách"]
+    
+    for d in docs:
+        text = (d.get("passage") or "").strip().lower()
+        if any(kw in text for kw in keywords):
+            infected_files.append(d.get("_source_file"))
+            
+    return {
+        "total_infected_files": len(infected_files),
+        "percentage_infected": round(100 * len(infected_files) / (len(docs) or 1), 2),
+        "eg_first_10": sorted(infected_files)[:10]
+    }
+
+def save_exclusion_decisions(ket_luan: dict, dup_groups: list[list[str]], out_path: Path = Path("docs/exclusion_decisions.json")) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps({
+        "docs_exclude_from_corpus": ket_luan["docs_recommended_exclude_from_corpus"],
+        "qids_exclude_vung_chet": ket_luan["qids_exclude_unsolvable_vung_chet"],
+        "n_corpus_after_exclusion": ket_luan["n_corpus_after_exclusion"],
+        "dup_groups": [sorted(g) for g in dup_groups],
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Đã ghi quyết định loại trừ: {out_path}")
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
@@ -590,6 +672,8 @@ def top_length_outliers(docs: list[dict], top_n: int = 5) -> dict:
 def render_markdown(results: dict) -> str:
     lines = ["# EDA Notes - chạy trước khi chunker/parser bị chỉnh lần cuối", ""]
     lines.append("> Sinh bởi `scripts/eda.py`. Điền thủ công phần nhận xét sau mỗi mục.")
+    lines.append("")
+    lines.append("Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có một số context có passage rỗng hoặc trùng, trên tập public test và private test đáp án không có hiện tượng context trùng hay rỗng, phương án xử lý sau cập nhật sẽ được đưa ra tùy mỗi mục")
     lines.append("")
     for section, data in results.items():
         lines.append(f"## {section}")
@@ -599,6 +683,8 @@ def render_markdown(results: dict) -> str:
         lines.append("```")
         lines.append("")
         lines.append("**Nhận xét:** _(điền)_")
+        lines.append("")
+        lines.append("**Phương án tạm thời:** _(điền)_")
         lines.append("")
     return "\n".join(lines)
 
@@ -618,27 +704,22 @@ def main():
     train = load_train(args.train)
     print(f"  → {len(train)} câu hỏi")
 
+    dup_passage_groups, id_to_link = _group_duplicate_passages(docs)
+
     results = {
         "1. Phân bố độ dài văn bản": doc_length_stats(docs),
         "2. Cấu trúc Điều N vs fallback": dieu_structure_stats(docs),
         "3. Trường thiếu (id/name/link/text)": missing_field_stats(docs),
         "4. Phân bố số đáp án / câu hỏi": answer_count_stats(train),
-        "5. Trùng / gần trùng văn bản": near_duplicate_stats(docs, train),
+        "5. Trùng / gần trùng văn bản": near_duplicate_stats(docs, train, dup_passage_groups, id_to_link),
         "6. Độ dài câu hỏi": question_length_stats(train),
         "7. Độ phủ doc_id (train vs corpus)": doc_id_coverage_stats(docs, train),
         "8. Mối quan hệ lỗi (3.1)": check_name_passage_overlap(docs),
-        "9. Kiểm chứng Gold ID trỏ vào file lỗi": verify_gold_with_missing_fields(docs, train),
+        "9. Kiểm chứng Gold ID trỏ vào file lỗi (rỗng + trùng)": verify_gold_with_missing_fields(docs, train, dup_passage_groups, id_to_link),        
         "10. Đối chiếu Train vs Public": compare_train_public_stats(docs, train, args.public),
         "11. Chi tiết outlier độ dài (Tra cứu thủ công)": top_length_outliers(docs, top_n=5),
+        "12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler": check_crawler_pollution(docs),
     }
-
-    print("\n=== TÓM TẮT ===")
-    for section, data in results.items():
-        print(f"\n{section}")
-        for k, v in data.items():
-            if isinstance(v, list):
-                continue  # danh sách ví dụ chỉ in trong file markdown, không spam stdout
-            print(f"  {k}: {v}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(render_markdown(results), encoding="utf-8")
@@ -651,6 +732,16 @@ def main():
             "Kiểm tra ngay - có thể là bẫy str/int (xem INTERFACES.md mục 0) hoặc thiếu file corpus."
         )
 
+    n_review = results["9. Kiểm chứng Gold ID trỏ vào file lỗi (rỗng + trùng)"]["ket_luan"]["n_qids_needs_manual_review"]
+    if n_review > 0:
+        print(
+            f"\n  CẢNH BÁO: {n_review} câu hỏi có gold rơi vào nhóm trùng còn tranh chấp (>=2 gold khác câu) — "
+            "cần P2 quyết định thủ công trước khi đụng vào corpus."
+        )
+
+    ket_luan = results["9. Kiểm chứng Gold ID trỏ vào file lỗi (rỗng + trùng)"]["ket_luan"]
+    if ket_luan["ready_to_apply"]:
+        save_exclusion_decisions(ket_luan, dup_passage_groups)
 
 if __name__ == "__main__":
     main()
