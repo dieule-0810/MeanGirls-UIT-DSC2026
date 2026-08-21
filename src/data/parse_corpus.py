@@ -23,33 +23,40 @@ Cấu trúc mã nguồn:
         - Nhận tham số dòng lệnh thông qua argparse và kích hoạt luồng xử lý.
 
     ┌────────────────────────────────────────────────────────┐
-    │  1. IMPORTS BLOCK (argparse, json, re, hashlib, Path)  │
+    │  IMPORTS BLOCK (argparse, json, re, hashlib, Path)  │
     ├────────────────────────────────────────────────────────┤
-    │  2. HELPER FUNCTIONS                                   │
+    │  1. HELPER FUNCTIONS                                   │
     │     ├── clean_text(raw_text) -> str                    │
     │     └── calculate_sha256(file_path) -> str             │
     ├────────────────────────────────────────────────────────┤
-    │  3. QA VALIDATOR                                       │
-    │     └── verify_processed_corpus(file_path) -> bool     │
+    │  2. QA VALIDATOR                                       │
+    │     └── verify_processed_corpus(file_path,             │
+    │         expected_lines: int) -> bool                   │
     ├────────────────────────────────────────────────────────┤
-    │  4. CORE PARSER (parse_corpus)                         │
+    │  3. CORE PARSER (parse_corpus)                         │
     │     ├── Quét 8.532 file thô bằng .glob()               │
+    │     ├── Nạp docs_exclude_from_corpus từ                │
+    │     │   exclusion_decisions.json, bỏ qua 25 doc_id     │
     │     ├── Đọc, ép str(id), sửa khuyết name/passage       │
     │     ├── Dọn rác crawler (security popup) bằng Regex    │
     │     └── Ghi tuần tự từng dòng vào file .jsonl          │
     ├────────────────────────────────────────────────────────┤
-    │  5. CLI ENTRYPOINT (main)                              │
+    │  4. CLI ENTRYPOINT (main)                              │
     │     └── Cấu hình argparse (--corpus-dir, --out)        │
     └────────────────────────────────────────────────────────┘
 
 Các lưu ý sống còn (Bẫy dữ liệu phòng ngự):
     - [BẪY KIỂU DỮ LIỆU]: id của file thô là int (177504) nhưng nhãn BTC dùng str ("177504").
       Bắt buộc ép str(doc_id) ngay tại điểm đọc để tránh lỗi "0 điểm im lặng" trên Leaderboard.
-    - [BẪY KHUYẾT TRƯỜNG]: 13.2% tài liệu khuyết trường 'name' -> dùng .get("name", "Không có tiêu đề").
-    - [BẪY RỖNG PASSAGE]: 0.2% file rỗng passage -> giữ nguyên "", TUYỆT ĐỐI không bịa nội dung rác 
-      để tránh làm lệch không gian vector của mô hình.
+    - [BẪY KHUYẾT TRƯỜNG]: 13.2% tài liệu khuyết trường 'name' -> quy về chuỗi rỗng "", tránh 
+      "ô nhiễm từ vựng" khi index. Field name vẫn khuyết ở corpus sau xử lý.
+    - [BẪY RỖNG PASSAGE]: 20 file rỗng passage (đã xác nhận qua BTC + eda.py) bị LOẠI HẲN khỏi
+      corpus_clean.jsonl (đọc từ docs_exclude_from_corpus trong exclusion_decisions.json), không
+      còn giữ lại với "" như bản trước 20/8. TUYỆT ĐỐI không bịa nội dung rác cho các trường hợp
+      rỗng phát sinh mới ngoài danh sách đã biết.
     - [CHỮ THƯỜNG LINK]: Đổi link về dạng lowercase() để đồng bộ hóa các trường hợp trùng lặp.
-    - [XÁC MINH CHECKSUM]: Bắt buộc tự in số dòng (phải đúng 8.532) và SHA-256 Checksum sau khi ghi xong.
+    - [XÁC MINH CHECKSUM]: Bắt buộc tự in số dòng (đọc động từ docs/exclusion_decisions.json,
+      hiện là 8.507 sau khi loại 25 doc_id rỗng/trùng-dư) và SHA-256 Checksum sau khi ghi xong.
     - [THỨ TỰ DÒNG / ID]: Dữ liệu được ghi theo thứ tự bảng chữ cái (lexicographical) của tên file thô 
       (ví dụ: ID 100 đứng trước ID 2). Đảm bảo tính nhất quán tuyệt đối giúp mã băm SHA-256 trùng khớp 
       100%, hoàn toàn không ảnh hưởng đến hiệu năng lập chỉ mục hay điểm số truy hồi của BTC.
@@ -329,7 +336,7 @@ def parse_corpus(corpus_dir: Path, out_path: Path):
     print(f" BÁO CÁO NGHIỆM THU TIỀN XỬ LÝ (P2) CODA-READY:")
     print(f"  - Tổng số dòng ghi được: {count} / {expected_lines_after_exclusion} dòng")
     if count != expected_lines_after_exclusion:
-        print(f"  CẢNH BÁO: số dòng ({count}) khác kỳ vọng ({expected_lines_after_exclusion}) — kiểm tra excluded_doc_ids hoặc corpus nguồn.")
+        print(f"  CẢNH BÁO: số dòng ({count}) khác kỳ vọng ({expected_lines_after_exclusion}) - kiểm tra excluded_doc_ids hoặc corpus nguồn.")
     print(f"  - SHA-256 Checksum: {checksum}")
     print("=" * 80)
     

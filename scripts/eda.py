@@ -12,7 +12,10 @@ Cách chạy:
         --public data/public-official.json \
         --out docs/eda_notes.md
 
-Output: in tóm tắt ra stdout + ghi báo cáo markdown vào --out.
+Output: in tóm tắt ra stdout + ghi báo cáo markdown vào --out. Nếu mục 9 (ket_luan) có
+ready_to_apply=True, còn ghi thêm docs/exclusion_decisions.json - file nguồn duy nhất mà
+parse_corpus.py và split_data.py đọc để biết doc_id/qid nào cần loại và
+dup_groups nào cần dùng. KHÔNG hard-code lại các danh sách này ở file khác.
 
 TODO cho P2: các hàm dưới đây là khung - điền phần tokenize tiếng Việt
 (underthesea/pyvi) nếu muốn số liệu "từ" chính xác hơn whitespace-split.
@@ -232,7 +235,7 @@ def answer_count_stats(train: dict[str, dict]) -> dict:
     mean_gold = sum(counts) / n
     # Trần trên của Precision KHI LUÔN nộp đủ 5 doc/câu, giả định mọi gold lọt top-5.
     # precision mỗi câu = min(|gold|,5)/5  (min để không vượt 1 nếu |gold|>5).
-    # Đây là CẬN TRÊN, không phải precision đo được — thực tế Recall@5<1 nên thấp hơn.
+    # Đây là CẬN TRÊN, không phải precision đo được - thực tế Recall@5<1 nên thấp hơn.
     precision_ceiling_always5 = sum(min(g, 5) for g in counts) / n / 5
 
     return {
@@ -480,7 +483,7 @@ def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict],
 
         if len(gold_members) == 0:
             keep = sorted(group, key=lambda x: (len(x), x))[0]
-            action = "Không thành viên nào là gold — tie-break, giữ ID nhỏ nhất."
+            action = "Không thành viên nào là gold - tie-break, giữ ID nhỏ nhất."
             needs_review = False
         elif len(gold_members) == 1:
             keep = next(iter(gold_members))
@@ -488,7 +491,7 @@ def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict],
             needs_review = False
         else:
             keep = None
-            action = "CẦN XEM THỦ CÔNG — nhiều hơn 1 thành viên là gold của các câu khác nhau."
+            action = "CẦN XEM THỦ CÔNG - nhiều hơn 1 thành viên là gold của các câu khác nhau."
             needs_review = True
 
         remove = sorted(set(group) - {keep}) if keep else []
@@ -735,7 +738,7 @@ def main():
     n_review = results["9. Kiểm chứng Gold ID trỏ vào file lỗi (rỗng + trùng)"]["ket_luan"]["n_qids_needs_manual_review"]
     if n_review > 0:
         print(
-            f"\n  CẢNH BÁO: {n_review} câu hỏi có gold rơi vào nhóm trùng còn tranh chấp (>=2 gold khác câu) — "
+            f"\n  CẢNH BÁO: {n_review} câu hỏi có gold rơi vào nhóm trùng còn tranh chấp (>=2 gold khác câu) - "
             "cần P2 quyết định thủ công trước khi đụng vào corpus."
         )
 
