@@ -1,0 +1,128 @@
+# configs/models.yaml — danh sách model đăng ký với BTC, đã pin revision.
+#
+# Vì sao pin revision: tác giả trên HuggingFace có thể cập nhật repo bất cứ lúc nào.
+# Không pin thì kết quả tái lập của BTC lệch so với kết quả team báo cáo, và không ai
+# tìm ra nguyên nhân. Đây là dòng "Model HF bị tác giả cập nhật giữa chừng" trong bảng
+# rủi ro (plan.md mục 7).
+#
+# Cách dùng:
+#     from transformers import AutoModel
+#     AutoModel.from_pretrained(cfg["repo"], revision=cfg["revision"])
+# Bỏ tham số `revision` = vi phạm quy tắc tái lập của team.
+#
+# Kiểm toán tham số: docs/param_audit.md (P4, 13/08/2026)
+# Ngân sách BTC: tổng toàn pipeline < 4.000M, tính cả lớp embedding.
+
+budget:
+  max_total_params: 4_000_000_000
+  note: >
+    Tính tổng mọi thành phần có tham số học được trong pipeline nộp bài:
+    bi-encoder + reranker + (ensemble nếu có). BM25 không có tham số học được
+    nhưng vẫn khai trong Model Card.
+
+rerankers:
+  - repo: BAAI/bge-reranker-v2-m3
+    revision: 953dc6f6f85a
+    params: 567_800_000
+    arch: xlm-roberta-large
+    max_seq_len: 8192
+    license: apache-2.0
+
+  - repo: AITeamVN/Vietnamese_Reranker
+    revision: f53697624840
+    params: 567_800_000
+    arch: xlm-roberta-large
+    max_seq_len: 8192
+    license: apache-2.0
+    note: nhiều khả năng fine-tune từ bge-reranker-v2-m3 — coi là biến thể, không phải model độc lập
+
+  - repo: namdp-ptit/ViRanker
+    revision: 922bd0d698b1
+    params: 567_800_000
+    arch: xlm-roberta-large
+    max_seq_len: 8192
+    license: apache-2.0
+
+  - repo: Qwen/Qwen3-Reranker-0.6B
+    revision: e61197ed4502
+    params: 595_800_000
+    arch: qwen3
+    license: apache-2.0
+
+  - repo: jinaai/jina-reranker-v2-base-multilingual
+    revision: 9cfeff2df7d4
+    params: 278_400_000
+    arch: xlm-roberta-base-variant
+    license: cc-by-nc-4.0
+    license_note: >
+      Phi thương mại. HỢP LỆ theo mục "Quy định về API và giấy phép" của thể lệ
+      (chấp nhận giấy phép nghiên cứu/giáo dục/phi thương mại). Ghi rõ trong đơn đăng ký.
+
+  - repo: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+    revision: 1427fd652930
+    params: 117_600_000
+    arch: mMiniLMv2-L12-H384
+    license: apache-2.0
+    note: >
+      Ứng viên "reranker nhỏ" cho ô ablation nhỏ-vs-lớn, và cho phương án chạy nhanh
+      ở private test. 96M/117.6M nằm ở lớp embedding — transformer thật chỉ ~21.6M.
+
+bi_encoders:
+  - repo: BAAI/bge-m3
+    revision: 5617a9f61b02
+    params: 567_800_000
+    params_verified: true        # ⚠️ SUY DIỄN từ kiến trúc, chưa đếm trực tiếp
+    arch: xlm-roberta-large
+    max_seq_len: 8192
+    license: mit
+    note: >
+      Repo không có safetensors. Xem docs/param_audit.md phần "Suy diễn BGE-M3".
+      Cộng thêm 1.049.600 nếu bật chế độ multi-vector (colbert_linear),
+      1.025 nếu bật sparse. Chạy scripts/verify_bge_m3.py rồi đặt params_verified: true.
+
+  - repo: AITeamVN/Vietnamese_Embedding
+    revision: dea33aa1ab33
+    params: 567_800_000
+    arch: xlm-roberta-large
+    max_seq_len: 8192
+    license: apache-2.0
+    note: fine-tune từ BGE-M3 cho tiếng Việt
+
+  - repo: Qwen/Qwen3-Embedding-0.6B
+    revision: 97b0c614be4d
+    params: 595_800_000
+    arch: qwen3
+    license: apache-2.0
+
+  - repo: intfloat/multilingual-e5-large
+    revision: 3d7cfbdacd47
+    params: 559_900_000
+    arch: xlm-roberta-large
+    max_seq_len: 512
+    license: mit
+
+  - repo: Alibaba-NLP/gte-multilingual-base
+    revision: 9bbca17d9273
+    params: 305_400_000
+    arch: new-impl
+    max_seq_len: 8192
+    license: apache-2.0
+    note: cần trust_remote_code — kiểm tra chạy được offline trong Docker trước khi dùng chính
+
+  - repo: intfloat/multilingual-e5-base
+    revision: d12875059715
+    params: 278_000_000
+    arch: xlm-roberta-base
+    max_seq_len: 512
+    license: mit
+
+  - repo: bkai-foundation-models/vietnamese-bi-encoder
+    revision: 84f9d9ada0d1
+    params: 135_000_000
+    arch: phobert-base
+    max_seq_len: 256
+    license: apache-2.0
+    note: nhẹ nhất, dùng để prototype nhanh và làm điểm tham chiếu tiếng Việt đơn ngữ
+
+# Tổ hợp nặng nhất: Qwen3-Embedding-0.6B + Qwen3-Reranker-0.6B = 1.191,6M (29,8% ngân sách).
+# Kể cả ensemble 2 bi-encoder + 1 reranker vẫn chỉ ~42,6%. Ngân sách 4B KHÔNG siết team này.
