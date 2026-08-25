@@ -23,7 +23,15 @@ chunking:
 retrieval:
   top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống
   top_k_submit: 5           # BTC chặn cứng ở 5
+  ranking_full_k: 50        # độ sâu dump ranking_full.json cho P4 (tách L1-RETRIEVE/L1-RERANK)
   bm25:
     k1: 1.5
     b: 0.75
-    pool: max               # max | sum, cách gộp chunk → doc
+    pool: max               # max | sum | mean_topN | logsumexp, cách gộp chunk → doc
+    # Ghim tường minh từ v0.2 trở đi: khung tokenizer mới (src/retrieval/tokenizers.py)
+    # mặc định gộp vị trí dấu thanh ("hoà" → "hòa"). v0.1 KHÔNG có bước đó. Ghi rõ ở đây
+    # để config v0.1 vẫn tái lập đúng con số v0.1, thay vì trôi theo mặc định mới.
+    tokenizer: regex
+    tokenizer_opts:
+      fold_tone: false
+    candidate_chunks: null  # null = không cắt ứng viên, đúng hành vi v0.1

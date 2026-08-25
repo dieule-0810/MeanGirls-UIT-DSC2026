@@ -1,0 +1,54 @@
+# v0.2 — BM25 + tokenizer tiếng Việt. Thí nghiệm của P3 (plan.md mục 4, KPI Recall@50).
+#
+# Giả thuyết H1: word-segment tiếng Việt (pyvi/underthesea) tăng Recall@50 của BM25 so với
+# tách âm tiết thuần, vì term ghép ("cơ_quan") hiếm hơn → IDF cao hơn → ít khớp nhiễu.
+# Giả thuyết H1b: phần lớn mức tăng đó lấy lại được bằng bigram âm tiết, KHÔNG cần
+# dependency nặng — nếu đúng thì Docker của P1 nhẹ đi và không phụ thuộc thư viện bên thứ ba.
+# Giả thuyết H2: gộp chunk→doc bằng mean_top3/logsumexp vượt max, vì văn bản đúng thường
+# khớp ở nhiều điều khoản chứ không chỉ một.
+#
+# Không hằng số nào được hard-code trong code (INTERFACES.md mục 6).
+exp_id: v0.2_bm25_tok
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks.jsonl
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  cache_dir:    data/cache            # cache token đã cắt, .gitignore đã chặn data/
+  out_dir:      outputs/v0.2_bm25_tok
+
+chunking:
+  max_words: 180
+  overlap_words: 45
+  prepend_name: true
+
+retrieval:
+  top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống
+  top_k_submit: 5           # BTC chặn cứng ở 5
+  ranking_full_k: 50        # độ sâu dump ranking_full.json cho P4 (tách L1-RETRIEVE/L1-RERANK)
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: max               # max | sum | mean_topN (vd mean_top3) | logsumexp
+    pool_tau: 1.0           # chỉ dùng cho logsumexp
+    tokenizer: regex        # regex | whitespace | syllable_bigram | pyvi | underthesea
+    tokenizer_opts:
+      fold_tone: true       # "hoà" ↔ "hòa" về một dạng
+      min_len: 1
+    min_df: 1               # cắt term hiếm; 2–3 làm vocab nhẹ hẳn trên corpus thật
+    candidate_chunks: 2000  # số chunk giữ lại trước khi gộp lên doc; null = giữ tất cả (chậm)
+    n_jobs: 4               # tách từ đa tiến trình, chỉ có ý nghĩa với pyvi/underthesea
+    batch_size: 64
+
+# Lưới cho scripts/bench_retrieval.py. Backend chưa cài sẽ bị bỏ qua kèm cảnh báo,
+# không làm chết cả lưới.
+bench:
+  tokenizers: [regex, whitespace, syllable_bigram, pyvi, underthesea]
+  pools: [max, mean_top3, logsumexp, sum]
+  recall_at: [5, 20, 50, 100]
+  n_questions: null         # số câu hỏi lấy từ holdout; null = tất cả
