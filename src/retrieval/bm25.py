@@ -3,7 +3,7 @@ BM25 Okapi trên chunk — CHỦ SỞ HỮU: P3. Khớp `BaseRetriever` (INTERFA
 
 scipy sparse thay vì rank_bm25 (vòng lặp Python, giờ thay vì phút trên corpus thật).
 v0.2 thêm tokenizer cắm rời, gộp chunk→doc do khung lo, chấm theo lô + argpartition —
-đều là trục ablation, mặc định vẫn ra kết quả v0.1 (docs/p3_retrieval.md).
+đều là trục ablation, mặc định vẫn ra kết quả v0.1 (docs/retrieval.md).
 
 Tái lập v0.1 chính xác: `tokenizer: regex`, `tokenizer_opts: {fold_tone: false}`,
 `pool: max`, `candidate_chunks: null`.

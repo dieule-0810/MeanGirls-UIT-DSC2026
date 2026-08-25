@@ -3,7 +3,7 @@ Tokenizer tiếng Việt cho BM25 (plan.md mục 4) — CHỦ SỞ HỮU: P3.
 
 5 backend cùng giao diện, cùng chuẩn hoá (NFC → tách từ → lowercase → gộp dấu thanh),
 khác đúng một chỗ — cách cắt từ. Vì sao có cả word-segment lẫn âm tiết thuần, và giả thuyết
-đo được gì: docs/p3_retrieval.md mục 2 (H1/H1b).
+đo được gì: docs/retrieval.md mục 2 (H1/H1b).
 
   regex              `\\w+`, mốc tham chiếu v0.1, đừng đổi.
   whitespace         giữ nguyên cụm dính dấu (số hiệu văn bản không vỡ vụn).

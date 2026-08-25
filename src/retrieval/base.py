@@ -6,7 +6,7 @@ Subclass chỉ viết `index(chunks)` (gọi `self._register_chunks(chunks)`) v�
 lại: gộp chunk→doc, dedupe, sort, cắt top_k, `check_contract()`.
 
 `_score_chunks` tách riêng khỏi `search()` để giữ tầng chunk cho RRF (plan.md mục 2, hợp
-nhất BM25+dense trước khi gộp lên doc) và cho rerank của P4. Chi tiết: docs/p3_retrieval.md.
+nhất BM25+dense trước khi gộp lên doc) và cho rerank của P4. Chi tiết: docs/retrieval.md.
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def pool_scores(
     """
     Gộp điểm nhiều chunk cùng một văn bản thành một điểm cho văn bản đó.
 
-    max/sum/mean_topN/logsumexp — vì sao có cả bốn: docs/p3_retrieval.md mục 2 (H2).
+    max/sum/mean_topN/logsumexp — vì sao có cả bốn: docs/retrieval.md mục 2 (H2).
     mean_topN lấy trung bình trên số chunk THẬT SỰ có, không đệm 0 (phạt oan văn bản ngắn).
     """
     kind, n_top = parse_pool(strategy)
