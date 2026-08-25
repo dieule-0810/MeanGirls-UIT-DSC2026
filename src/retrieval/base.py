@@ -1,30 +1,12 @@
 """
-Khung `BaseRetriever` — hợp đồng của tầng truy hồi thứ nhất. CHỦ SỞ HỮU: P3.
+`BaseRetriever` — hợp đồng tầng truy hồi thứ nhất (INTERFACES.md mục 3). CHỦ SỞ HỮU: P3.
 
-Bản hợp đồng gốc nằm ở INTERFACES.md mục 3 và KHÔNG đổi:
+Subclass chỉ viết `index(chunks)` (gọi `self._register_chunks(chunks)`) và
+`_score_chunks(queries, n)` (top-n chunk mỗi query, đã sort giảm dần). Khung lo phần còn
+lại: gộp chunk→doc, dedupe, sort, cắt top_k, `check_contract()`.
 
-    index(chunks) -> None
-    search(queries, top_k) -> list[list[tuple[doc_id: str, score: float]]]
-      · đã gộp chunk → document
-      · đã loại trùng doc_id
-      · đã sắp xếp score giảm dần
-      · đã cắt còn top_k
-      · len(kết quả) == len(queries)
-
-File này thêm phần *thực thi* hợp đồng đó ở một chỗ duy nhất, thay vì mỗi retriever tự
-lặp lại (và tự sai một kiểu). Subclass chỉ phải viết hai hàm:
-
-    index(chunks)                      — dựng chỉ mục, gọi self._register_chunks(chunks)
-    _score_chunks(queries, n)          — trả về, cho mỗi query, (chỉ số chunk, điểm) top-n
-
-Còn lại — gộp chunk→doc, dedupe, sort, cắt, kiểm tra hợp đồng — khung lo.
-
-VÌ SAO TÁCH `_score_chunks` RA:
-plan.md mục 2 định hợp nhất BM25 + dense bằng RRF ở mức *chunk*, rồi mới gộp lên doc.
-Nếu mỗi retriever chỉ phơi ra `search()` (đã gộp lên doc rồi) thì RRF chỉ còn hợp nhất
-được ở mức doc — mất thông tin chunk nào khớp, và không so được các chiến lược gộp
-(max / mean-top-3 / logsumexp) trên CÙNG một lần chấm điểm. `candidates()` giữ lại
-tầng chunk cho P4 và cho `scripts/bench_retrieval.py`, mà không phá hợp đồng public.
+`_score_chunks` tách riêng khỏi `search()` để giữ tầng chunk cho RRF (plan.md mục 2, hợp
+nhất BM25+dense trước khi gộp lên doc) và cho rerank của P4. Chi tiết: docs/p3_retrieval.md.
 """
 from __future__ import annotations
 
@@ -62,17 +44,10 @@ def pool_scores(
     tau: float = 1.0,
 ) -> dict[str, float]:
     """
-    Gộp điểm của nhiều chunk cùng một văn bản thành một điểm cho văn bản đó.
+    Gộp điểm nhiều chunk cùng một văn bản thành một điểm cho văn bản đó.
 
-    max        — văn bản đáng lấy vì có MỘT điều khoản khớp. Mặc định, và là baseline v0.1.
-    sum        — cộng dồn: thiên vị văn bản dài (nhiều chunk) → thường tệ với corpus luật,
-                 nơi bộ luật vài trăm điều sẽ đè bẹp thông tư 3 điều. Giữ lại để CHỨNG MINH
-                 điều đó bằng số, vì đây là lỗi trực giác hay gặp.
-    mean_topN  — trung bình N chunk tốt nhất: thưởng cho văn bản khớp ở nhiều chỗ mà không
-                 để độ dài quyết định. Văn bản có ít hơn N chunk khớp thì lấy trung bình
-                 trên số chunk THẬT SỰ có (không đệm 0) — đệm 0 sẽ phạt oan văn bản ngắn.
-    logsumexp  — cầu nối liên tục giữa max (tau → 0) và sum (tau lớn). Một tham số tau
-                 tune được, thay vì chọn cứng một trong hai đầu.
+    max/sum/mean_topN/logsumexp — vì sao có cả bốn: docs/p3_retrieval.md mục 2 (H2).
+    mean_topN lấy trung bình trên số chunk THẬT SỰ có, không đệm 0 (phạt oan văn bản ngắn).
     """
     kind, n_top = parse_pool(strategy)
     scores = np.asarray(scores, dtype=np.float64)
@@ -118,11 +93,9 @@ def check_contract(
     top_k: int,
 ) -> None:
     """
-    Kiểm tra kết quả đúng hợp đồng INTERFACES.md mục 3. Rẻ, chạy được cả trong production.
+    Kiểm hợp đồng INTERFACES.md mục 3 — rẻ, chạy được cả production.
 
-    Bốn lỗi bên dưới đều thuộc loại KHÔNG gây exception ở hạ nguồn mà chỉ làm tụt điểm
-    im lặng (doc_id kiểu int → 0 điểm, trùng doc_id → tụt Precision, quá top_k → câu đó
-    0 điểm). Bắt tại đây rẻ hơn nhiều so với bắt trên leaderboard.
+    Bốn lỗi bên dưới BTC không báo, chỉ trừ điểm im lặng (doc_id int, trùng doc_id, quá top_k).
     """
     if len(results) != n_queries:
         raise AssertionError(f"search() trả {len(results)} kết quả cho {n_queries} query")
@@ -146,13 +119,7 @@ def check_contract(
 
 
 class BaseRetriever(ABC):
-    """
-    Lớp cha của mọi retriever tầng 1 (BM25, dense, hybrid).
-
-    KPI của P3 là Recall@50: doc đúng không lọt top-50 thì reranker của P4 không cứu được.
-    Vì vậy mọi tham số ảnh hưởng tới trần đó (`candidate_chunks`, chiến lược gộp) đều nằm
-    ở đây, khai báo trong YAML, không rải rác trong code.
-    """
+    """Lớp cha mọi retriever tầng 1 (BM25, dense, hybrid). KPI: Recall@50."""
 
     name: str = "base"
 
@@ -188,7 +155,7 @@ class BaseRetriever(ABC):
 
     # ── phần khung lo ────────────────────────────────────────────────────────
     def _register_chunks(self, chunks: list[dict]) -> None:
-        """Ghi nhận danh sách chunk và ép kiểu `str` — gọi ở đầu `index()`."""
+        """Ghi nhận chunk, ép `str`, tự sinh `chunk_id` nếu thiếu — gọi ở đầu `index()`."""
         doc_ids, chunk_ids = [], []
         seen: set[str] = set()
         synthesized = 0
@@ -227,10 +194,7 @@ class BaseRetriever(ABC):
     def candidates(
         self, queries: list[str], n_candidates: int | None = None
     ) -> list[tuple[np.ndarray, np.ndarray]]:
-        """
-        Tầng chunk, chưa gộp. Dùng cho RRF (plan.md mục 2) và cho lưới bench:
-        chấm điểm MỘT lần rồi thử nhiều chiến lược gộp trên cùng kết quả đó.
-        """
+        """Tầng chunk, chưa gộp — dùng cho RRF (plan.md mục 2) và lưới bench."""
         if not self.chunk_ids:
             raise RuntimeError(f"{type(self).__name__}: gọi .index() trước khi truy vấn")
         n = n_candidates or self.candidate_chunks
@@ -272,10 +236,7 @@ class BaseRetriever(ABC):
         return results
 
     def search_chunks(self, queries: list[str], top_k: int) -> list[list[tuple[str, float]]]:
-        """
-        Như `search()` nhưng trả `chunk_id` thay vì `doc_id`, chưa gộp.
-        Dành cho P4 (rerank cần đúng đoạn văn bản) và cho hợp nhất RRF ở mức chunk.
-        """
+        """Như `search()` nhưng trả `chunk_id`, chưa gộp — cho P4 rerank và RRF mức chunk."""
         out = []
         for idx, sc in self.candidates(list(queries), top_k):
             out.append([(self.chunk_ids[int(i)], float(s)) for i, s in zip(idx, sc)])
@@ -317,20 +278,14 @@ def available_retrievers() -> list[str]:
 
 
 def build_retriever(spec: dict) -> BaseRetriever:
-    """
-    `{"type": "bm25", "k1": 1.5, ...}` → instance.
-
-    Cho phép YAML mô tả trọn vẹn một thí nghiệm (INTERFACES.md mục 6: không hằng số
-    hard-code) và cho hybrid sau này dựng retriever con từ chính config của nó.
-    """
+    """`{"type": "bm25", "k1": 1.5, ...}` → instance. Không hằng số hard-code (INTERFACES.md mục 6)."""
     spec = dict(spec)
     kind = spec.pop("type", None)
     if kind is None:
         raise ValueError("Thiếu khoá 'type' trong config retriever")
     if kind not in _REGISTRY:
-        # Quy ước: retriever tên 'x' nằm ở src/retrieval/x.py. Nạp lười theo tên để
-        # `src/retrieval/__init__.py` không phải import sẵn mọi backend (torch của dense
-        # nặng và không phải lúc nào cũng cần).
+        # Nạp lười theo tên module (src/retrieval/<kind>.py) — dense kéo theo torch, không
+        # import sẵn.
         try:
             import importlib
 
