@@ -181,6 +181,49 @@ def cmd_scan(train, corpus):
     print(f"\nChi tiết: {OUT/'scan.json'}")
 
 
+FIELDS = ["qid", "verdict", "confidence", "note", "question",
+          "gold_ids", "gold_names", "gold_links"]
+
+HOLDOUT = TRAIN.parent / "holdout.json"   # KHÔNG BAO GIỜ lấy mẫu từ đây
+
+
+def already_read() -> set[str]:
+    """QID đã đọc ở các vòng trước (manual_audit_r*.csv).
+
+    Các vòng phải CỘNG DỒN, không xáo lại: đổi cỡ mẫu hay đổi pool đều làm
+    random.sample cho kết quả hoàn toàn khác, và công đọc vòng trước mất trắng.
+    """
+    seen: set[str] = set()
+    for f in sorted(OUT.glob("manual_audit_r*.csv")):
+        with f.open(encoding="utf-8") as fh:
+            seen |= {r["qid"] for r in csv.DictReader(fh) if r.get("qid")}
+    return seen
+
+
+def holdout_qids() -> set[str]:
+    """Tập câu phải loại khỏi mọi vòng đọc tay.
+
+    error_taxonomy.md: chỉ đọc error_pool, KHÔNG đọc holdout. Nhưng cmd_sample
+    lấy mẫu từ train.json — vốn chứa CẢ holdout. Vòng 30 câu đầu đã dính 2 câu
+    (62912, 119006) vì thiếu bộ lọc này. Ở cỡ mẫu 150 sẽ là ~21 câu.
+    """
+    if not HOLDOUT.exists():
+        sys.exit(f"Không có {HOLDOUT} — không thể bảo đảm mẫu sạch, dừng.")
+    return set(json.loads(HOLDOUT.read_text(encoding="utf-8")))
+
+VERDICTS = {
+    "OK":        "gold trả lời trực tiếp câu hỏi, không thấy vấn đề",
+    "N-ALTOK":   "gold đúng, NHƯNG có văn bản khác cũng trả lời được",
+    "N-CONSOLID":"gold trùng nội dung với một văn bản HỢP NHẤT cũng có trong kho",
+    "N-VERSION": "nội dung gold ĐÃ BỊ SỬA bởi văn bản khác; bản sửa đúng hơn gold",
+    "N-TRUNC":   "gold đúng, nhưng nội dung nằm ở file đính kèm / phụ lục không có trong corpus",
+    "N-WRONG":   "gold KHÔNG trả lời được câu hỏi → nhãn sai",
+    "N-AMBIG":   "câu hỏi mơ hồ, không xác định được doc nào đúng",
+}
+# N-WRONG là khẳng định về BTC; ba nhãn kia là về bài toán/dữ liệu. Tách khi báo cáo.
+CEILING = ("N-ALTOK", "N-CONSOLID", "N-VERSION", "N-TRUNC", "N-AMBIG")
+
+
 def cmd_sample(train, corpus, k: int, seed: int):
     """Xuất k câu NGẪU NHIÊN (không phải k câu xung đột) để đọc tay.
 
@@ -192,28 +235,42 @@ def cmd_sample(train, corpus, k: int, seed: int):
     if path.exists():
         sys.exit(f"{path} đã tồn tại — xoá nếu muốn lấy mẫu lại (sẽ mất nhãn đã ghi).")
 
+    hold, seen = holdout_qids(), already_read()
+    pool = sorted(set(train) - hold - seen)
+    if len(pool) < k:
+        sys.exit(f"Chỉ còn {len(pool)} câu ngoài holdout, không đủ {k}.")
     rng = random.Random(seed)
-    qids = rng.sample(sorted(train), k)
+    qids = rng.sample(pool, k)
+    assert not (set(qids) & hold), "Rò rỉ holdout — dừng."
 
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["qid", "verdict", "note", "question", "gold_ids", "gold_names"])
+        w.writerow(FIELDS)
         for qid in qids:
             v = train[qid]
             names = " ‖ ".join(
                 (corpus.get(g, {}).get("name") or "?")[:60] for g in v["gold"]
             ) if corpus else ""
-            w.writerow([qid, "", "", v["question"], "|".join(v["gold"]), names])
+            links = " | ".join(
+                (corpus.get(g, {}).get("link") or "?") for g in v["gold"]
+            ) if corpus else ""
+            row = [qid, "", "", "", v["question"],
+                   "|".join(v["gold"]), names, links]
+            # fail-loud: thêm cột vào FIELDS mà quên thêm ô ở đây sẽ lệch
+            # toàn bộ CSV một cách âm thầm — đúng loại lỗi đã xảy ra một lần.
+            assert len(row) == len(FIELDS), f"{len(row)} ô nhưng FIELDS có {len(FIELDS)}"
+            w.writerow(row)
 
-    print(f"Đã xuất {k} câu → {path}\n")
+    print(f"Đã xuất {k} câu → {path}")
+    print(f"(pool {len(pool):,} câu — đã loại {len(hold):,} holdout"
+          + (f" và {len(seen):,} câu đã đọc vòng trước" if seen else "") + ")\n")
     print("Mở bằng Excel/LibreOffice. Với MỖI câu, mở văn bản gold (link trong")
     print("corpus) và tự trả lời: văn bản này có thật sự trả lời được câu hỏi không?\n")
-    print("Điền cột verdict một trong bốn giá trị:")
-    print("  OK       — gold trả lời được, không thấy vấn đề")
-    print("  N-ALTOK  — gold đúng, NHƯNG có văn bản khác cũng trả lời được")
-    print("  N-WRONG  — gold KHÔNG trả lời được câu hỏi → nhãn sai")
-    print("  N-AMBIG  — câu hỏi mơ hồ, không xác định được doc nào đúng")
-    print("\nCột note BẮT BUỘC với mọi verdict khác OK — đó là bằng chứng.")
+    print("Điền cột verdict một trong các giá trị:")
+    for name, desc in VERDICTS.items():
+        print(f"  {name:<10} — {desc}")
+    print("\nCột confidence: high / medium / low. Quá 3 phút chưa quyết được → low.")
+    print("Cột note BẮT BUỘC với mọi verdict khác OK — đó là bằng chứng.")
     print("Đọc 30 câu mất khoảng 90 phút. Đừng vội, con số này sẽ vào bài báo.")
 
 
@@ -221,30 +278,94 @@ def cmd_report():
     path = OUT / "manual_audit.csv"
     if not path.exists():
         sys.exit(f"Chưa có {path} — chạy --sample trước.")
-    rows = [r for r in csv.DictReader(path.open(encoding="utf-8")) if r["verdict"].strip()]
+    all_rows = list(csv.DictReader(path.open(encoding="utf-8")))
+    rows = [r for r in all_rows if r.get("verdict", "").strip()]
     if not rows:
         sys.exit("Chưa điền cột verdict.")
 
-    n = len(rows)
+    # fail-loud: verdict lạ là lỗi gõ, đừng đếm im lặng
+    bad_v = sorted({r["verdict"].strip().upper() for r in rows} - set(VERDICTS))
+    if bad_v:
+        sys.exit(f"Verdict không hợp lệ: {bad_v}\nHợp lệ: {sorted(VERDICTS)}")
+
+    n, n_all = len(rows), len(all_rows)
     c = Counter(r["verdict"].strip().upper() for r in rows)
-    print(f"\nĐã đọc {n} câu.\n")
-    for k, v in c.most_common():
-        print(f"  {k:<10} {v:>3}   {v/n*100:5.1f}%")
+    print(f"\nĐã đọc {n}/{n_all} câu.\n")
+    for k in VERDICTS:
+        if c.get(k):
+            print(f"  {k:<10} {c[k]:>3}   {c[k]/n*100:5.1f}%   {VERDICTS[k]}")
+
+    # confidence — quy tắc 20% của error_taxonomy.md
+    conf = Counter((r.get("confidence") or "").strip().lower() for r in rows)
+    low = conf.get("low", 0)
+    if low:
+        print(f"\nconfidence=low: {low}/{n} ({low/n*100:.1f}%)")
+        if low / n > 0.20:
+            print("  🔴 Quá 20% → taxonomy chưa đủ tốt. Sửa taxonomy TRƯỚC khi đọc tiếp.")
+    if conf.get("", 0):
+        print(f"\n⚠️ {conf['']} câu chưa điền confidence.")
 
     bad = n - c.get("OK", 0)
     p = bad / n
-    # sai số chuẩn nhị thức — cỡ mẫu 30 rất nhỏ, phải nói rõ khoảng
     se = (p * (1 - p) / n) ** 0.5
     lo, hi = max(0, p - 1.96 * se), min(1, p + 1.96 * se)
-
     print(f"\nTỉ lệ nhãn có vấn đề: {p*100:.1f}%  (KTC 95%: {lo*100:.1f}% – {hi*100:.1f}%)")
     print(f"→ Recall trần ước lượng: khoảng {(1-p)*100:.0f}%")
+
+    n_ceil = sum(c.get(k, 0) for k in CEILING)
+    n_wrong = c.get("N-WRONG", 0)
+    print(f"\n  Trần bài toán ({len(CEILING)} nhãn không sửa được): {n_ceil} ({n_ceil/n*100:.1f}%)")
+    print(f"    → gold đúng, nhưng bài toán mơ hồ hoặc dữ liệu cụt. Mô hình không sửa được.")
+    print(f"  Nhãn sai thật sự (N-WRONG):                 {n_wrong} ({n_wrong/n*100:.1f}%)")
+    print(f"    → khẳng định về nhãn BTC. Con số này cần chuẩn nhất trong bài báo.")
+
     print(f"\n⚠️ Cỡ mẫu {n} rất nhỏ, khoảng tin cậy rộng. Dùng để định hướng, KHÔNG")
     print("   dùng làm con số chốt trong bài báo. Muốn hẹp khoảng thì cần ~150 câu.")
 
-    if c.get("N-WRONG", 0):
-        print(f"\n🔴 {c['N-WRONG']} câu có nhãn SAI. Đây là khẳng định mạnh — kiểm tra lại")
+    if n_wrong:
+        print(f"\n🔴 {n_wrong} câu có nhãn SAI. Đây là khẳng định mạnh — kiểm tra lại")
         print("   từng câu cùng một người thứ hai trước khi đưa vào báo cáo.")
+
+
+ATTACH_MARKERS = ("FILE ĐƯỢC ĐÍNH KÈM", "FILE ĐÍNH KÈM")
+SHORT_CHARS = 2500
+
+
+def cmd_scan_truncated(train, corpus):
+    """Câu hỏi có gold bị cắt cụt: nội dung thật nằm ở file đính kèm, hoặc
+    văn bản ngắn bất thường. Không mô hình nào giải được → đè trần Recall,
+    nhưng KHÁC N-WRONG: nhãn đúng, dữ liệu thiếu. Phát hiện ở câu 10 của
+    vòng đọc tay, sau đó tổng quát hoá thành phép quét này."""
+    rows = []
+    for qid, item in train.items():
+        for g in item["gold"]:
+            d = corpus.get(g)
+            if not d:
+                continue
+            t = d.get("text") or d.get("passage") or ""
+            up = t.upper()
+            flags = []
+            if len(t) < SHORT_CHARS:
+                flags.append("SHORT")
+            if any(a in up for a in ATTACH_MARKERS):
+                flags.append("ATTACH")
+            if flags:
+                rows.append((qid, g, len(t), "+".join(flags), item["question"][:60]))
+
+    n_q = len({r[0] for r in rows})
+    n_short = len({r[0] for r in rows if "SHORT" in r[3]})
+    print(f"\n{len(train):,} câu hỏi, {len(corpus):,} văn bản\n")
+    print(f"Câu hỏi có gold bị gắn cờ: {n_q} ({n_q/len(train)*100:.2f}%)")
+    print(f"  trong đó gold < {SHORT_CHARS:,} ký tự: {n_short} — gần như chắc chắn không giải được\n")
+
+    for r in sorted(rows, key=lambda x: x[2])[:40]:
+        print(f"  qid {r[0]:<8} doc {r[1]:<8} {r[2]:>7,} ký tự  {r[3]:<12} {r[4]}")
+    if len(rows) > 40:
+        print(f"  … còn {len(rows)-40} dòng")
+
+    print("\nATTACH đơn thuần chỉ là CẬN TRÊN của rủi ro — nhiều văn bản có phụ lục")
+    print("đính kèm nhưng phần thân vẫn trả lời được. SHORT mới là tín hiệu mạnh.")
+    print("Chuyển danh sách SHORT cho P2: parse_corpus.py hiện chỉ lọc passage rỗng.")
 
 
 def main():
@@ -252,12 +373,15 @@ def main():
     ap.add_argument("--scan", action="store_true")
     ap.add_argument("--sample", type=int, metavar="N")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--scan-truncated", action="store_true", dest="scan_truncated")
     ap.add_argument("--seed", type=int, default=42)
     a = ap.parse_args()
 
     if a.report:
         return cmd_report()
     train, corpus = load_train(), load_corpus()
+    if a.scan_truncated:
+        return cmd_scan_truncated(train, corpus)
     if a.scan:
         return cmd_scan(train, corpus)
     if a.sample:
