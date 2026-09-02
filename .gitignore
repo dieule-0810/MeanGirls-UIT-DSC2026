@@ -22,7 +22,8 @@ checkpoints/
 
 # ── Kết quả chạy ─────────────────────────────────────────────────────
 runs/
-outputs/
+outputs/*
+!outputs/label_audit/
 submission*.zip
 *.log
 docs/exclusion_decisions.json
@@ -35,3 +36,9 @@ venv/
 .ipynb_checkpoints/
 .pytest_cache/
 .DS_Store
+
+
+outputs/label_audit/*.json
+outputs/label_audit/packet.html
+outputs/label_audit/manual_audit.csv
+!outputs/label_audit/manual_audit_r*.csv
