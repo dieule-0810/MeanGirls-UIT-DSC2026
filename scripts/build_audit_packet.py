@@ -95,36 +95,63 @@ def load_train() -> dict[str, dict]:
 
 
 # ──────────────────────────────────────────────────────────── trích đoạn ──
+UP = r"[^\W\da-z_]"          # chữ hoa (kể cả có dấu) theo Unicode
+SEC = re.compile(
+    r"(?=\s(?:"
+    r"Điều\s+\d+\s*[\.:]"                    # Điều 43.
+    r"|Chương\s+[IVXLC]+\b"                   # Chương IV
+    r"|[IVX]{1,5}\.\s+" + UP + r"{2,}"        # III. CHỐNG CHỈ ĐỊNH
+    r"|\d{1,2}\.\s+" + UP + r"{2,}"          # 20. NẮN CHỈNH HÌNH ...
+    r"))"
+)
+MAX_PARA = 2000
+
+
+def _window(t: str, size: int = MAX_PARA) -> list[str]:
+    return [t[i:i + size] for i in range(0, len(t), size)]
+
+
 def split_paragraphs(text: str) -> list[str]:
+    """Tách đoạn. corpus_clean đã dọn hết \n nên nhánh dòng trống thường rỗng;
+    khi đó tách theo mốc cấu trúc pháp lý, rồi cắt tiếp đoạn quá dài."""
     text = text.replace("\r", "")
     parts = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    # gộp đoạn quá ngắn vào đoạn sau để không vụn
+    if len(parts) <= 1:
+        parts = [p.strip() for p in SEC.split(text) if p.strip()]
+    if len(parts) <= 1:
+        parts = _window(text)
+
     out, buf = [], ""
     for p in parts:
-        buf = (buf + " " + p).strip() if len(buf) < 80 else buf
-        if len(buf) >= 80:
-            out.append(buf)
-            buf = ""
-        elif buf == "":
-            buf = p
+        if len(p) > MAX_PARA:
+            if buf:
+                out.append(buf); buf = ""
+            out.extend(_window(p))
+            continue
+        buf = (buf + " " + p).strip() if buf else p
+        if len(buf) >= 200:
+            out.append(buf); buf = ""
     if buf:
         out.append(buf)
     return out or [text]
 
 
-def score_para(p: str, ks: list[str]) -> int:
+def score_para(p: str, ks: list[str], w: dict | None = None) -> float:
     np_ = norm(p)
-    return sum(np_.count(k) * len(k) for k in ks)
+    raw = sum(np_.count(k) * len(k) * (w or {}).get(k, 1.0) for k in ks)
+    return raw / (len(np_) ** 0.5 + 1)   # mật độ, không phải số đếm thô
 
 
-def excerpts(text: str, ks: list[str], top: int = 4) -> tuple[str, list[tuple[int, str]]]:
+def excerpts(text: str, ks: list[str], top: int = 4):
     paras = split_paragraphs(text)
     head = paras[0][:600]
-    scored = sorted(
-        ((score_para(p, ks), i, p) for i, p in enumerate(paras)),
-        key=lambda x: -x[0],
-    )
-    picked = [(i, p) for s, i, p in scored[:top] if s > 0]
+    # trọng số kiểu IDF: từ có mặt ở gần như mọi đoạn thì gần như vô giá trị
+    n = len(paras)
+    npar = [norm(p) for p in paras]
+    w = {k: 1.0 / (1 + sum(1 for q in npar if k in q) / max(n, 1) * 10) for k in ks}
+    scored = sorted(((score_para(p, ks, w), i, p) for i, p in enumerate(paras)),
+                    key=lambda x: -x[0])
+    picked = [(i, p) for sc, i, p in scored[:top] if sc > 0]
     picked.sort()
     return head, picked
 
@@ -226,7 +253,7 @@ def build(train, docs, qids) -> str:
                            "— dấu hiệu mạnh của N-WRONG, nhưng hãy mở bản đầy đủ kiểm lại</div>")
             for i, p in picked:
                 out.append(f"<div class='ex'><div class='ei'>đoạn #{i}</div>"
-                           f"{highlight(p[:2200], ks)}</div>")
+                           f"{highlight(p[:MAX_PARA], ks)}</div>")
             out.append("</div>")
 
         out.append("<div class='v'>Ghi vào manual_audit.csv &nbsp;·&nbsp; "
@@ -247,8 +274,12 @@ def main():
     train, docs = load_train(), load_docs()
     print(f"{len(docs):,} văn bản, {len(train):,} câu hỏi")
 
-    # PHẢI khớp cách lấy mẫu của audit_labels.py --sample
-    qids = random.Random(a.seed).sample(sorted(train), a.n)
+    # PHẢI khớp cách lấy mẫu của audit_labels.py --sample, KỂ CẢ bộ lọc holdout.
+    # Thiếu bộ lọc này thì gói đọc và CSV lệch nhau, và tệ hơn: đọc phải holdout.
+    hold = set(json.loads((TRAIN.parent / "holdout.json").read_text(encoding="utf-8")))
+    pool = sorted(set(train) - hold)
+    qids = random.Random(a.seed).sample(pool, a.n)
+    assert not (set(qids) & hold), "Rò rỉ holdout — dừng."
 
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / "packet.html"
