@@ -91,6 +91,50 @@ class BaseRetriever:
 **Gộp chunk → doc là trách nhiệm của retriever, không phải của người gọi.** Lý do: mỗi retriever có thang điểm
 khác nhau (BM25 vs cosine), cách gộp tối ưu cũng khác. Ép ra ngoài sẽ rò rỉ chi tiết nội bộ.
 
+## 3b. Gộp chunk → doc — P3 sở hữu, P4 đo
+
+Chiến lược đã hiện thực trong `base.pool_scores()`. §3 quy định đây là trách nhiệm của
+retriever; P4 đo và khuyến nghị, KHÔNG hiện thực lại.
+
+**Số liệu (dev n=1000, `configs/v0.1_bm25_cap2000.yaml`):**
+
+| pool | R@5 | R@50 | spread@5 | freq=0 @5 | freq>=11 @5 |
+|---|---:|---:|---:|---:|---:|
+| `max` (=N=1) | 0,7863 | 0,9503 | 0,2166 | 0,8073 | 0,6345 |
+| `mean_top2` | 0,8116 | 0,9540 | 0,1694 | 0,8067 | 0,6988 |
+| `mean_top3` | 0,8106 | 0,9540 | 0,1751 | 0,7952 | 0,6988 |
+| `mean_top4` | 0,7961 | 0,9530 | — | — | — |
+| `mean_top5` | 0,7869 | 0,9490 | — | — | — |
+| `logsumexp` | 0,8067 | 0,9568 | 0,2024 | 0,8172 | 0,6696 |
+| `sum` | sập | sập | — | — | — |
+
+**QUYẾT ĐỊNH:**
+- `pool = logsumexp` cho pipeline CÓ rerank (R@50 là trần của reranker ⇒ là ràng buộc).
+- `pool = mean_top2` cho bản BM25 thuần (R@5 là ràng buộc).
+- `max` KHÔNG dùng nữa ở bất kỳ chế độ nào.
+
+**Bằng chứng:**
+- `max` thua `mean_top3` có ý nghĩa: bootstrap cặp KTC95 [+0,0073, +0,0415],
+  McNemar 56-33, p=0,0197, n=1000.
+- `mean_top2` ~ `mean_top3` ~ `logsumexp`: mọi cặp đều hoà (p≈1 ở K=5; 8 câu bất đồng
+  ở K=50, p=0,077). Phân thắng bại bằng NGUYÊN TẮC THIẾT KẾ, không bằng số liệu —
+  `logsumexp` không có tham số tự do; `mean_top2` không gây thoái lui ở tầng `freq=0`.
+- `sum` sập: thưởng độ dài văn bản, không thưởng độ liên quan (0,0683 vs 0,2583 ở
+  thăm dò 150k chunk).
+
+**Đường cong N (mean_topN), n=1000:** 0,7863 → 0,8116 → 0,8106 → 0,7961 → 0,7869 cho
+N=1..5. Chữ U ngược, đỉnh tại N=2-3. Diễn giải: độ liên quan trong hỏi đáp pháp luật
+tiếng Việt tập trung trong ~2-3 chunk (~360-540 từ) — thường là một hai điều khoản.
+N nhỏ để một chunk may mắn quyết định cả văn bản; N lớn pha loãng bằng đoạn không liên
+quan. N→∞ chính là `sum` chuẩn hoá độ dài, và `sum` thì sập — hai đầu đường cong khớp.
+Chỉ 1,0% văn bản có ≤3 chunk (trung vị 36) nên cơ chế "không đệm 0" không chi phối kết quả.
+
+**Điều khoản bổ sung — retriever PHẢI trả `chunk_id` đại diện kèm mỗi doc.**
+`search_chunks()` đã làm được; đưa vào hợp đồng vì reranker cần một đoạn văn bản cụ thể
+để chấm. Quy ước phá hoà: điểm cao nhất, hoà thì `chunk_id` nhỏ nhất — bắt buộc tường
+minh vì 17/300 câu error_pool có ≥2 chunk cùng văn bản hoà điểm tuyệt đối, và nếu không
+phá hoà thì việc chọn đoạn nào phụ thuộc `candidate_chunks`.
+
 ---
 
 ## 4. Predictions — định dạng nội bộ toàn pipeline
