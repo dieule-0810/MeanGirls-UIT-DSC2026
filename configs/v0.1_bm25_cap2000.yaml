@@ -1,0 +1,51 @@
+# v0.1_cap2000 — BM25 v0.1, KHÔNG đổi kết quả, chỉ đổi tốc độ.
+#
+# Khác v0.1_bm25.yaml đúng MỘT dòng: candidate_chunks 2000 thay vì null.
+#
+# Vì sao có file này: v0.1 gốc chấm toàn bộ 524.422 chunk mỗi câu → 428 ms/câu,
+# tức 7 phút cho một lượt quét dev. Không quét lưới siêu tham số được với tốc độ đó.
+#
+# Bằng chứng tương đương (chạy trên corpus ĐẦY ĐỦ, không phải mẫu nhỏ):
+#     error_pool 300 câu · 300/300 câu có top-50 doc GIỐNG HỆT v0.1 gốc
+#     R@5 = 0,7700 · R@20 = 0,8922 · R@50 = 0,9356  — khớp tuyệt đối
+#     428 ms/câu → 43 ms/câu (nhanh 10 lần)
+# Tái lập kiểm tra này: experiments.csv dòng `v0.1_bm25_cap2000`.
+#
+# Lý do nó đúng: top-50 DOC không bao giờ cần tới chunk xếp thứ 2000. Nhưng đây là
+# lập luận, không phải chứng minh — nếu đổi chunker, đổi tokenizer, hoặc tăng top_k
+# quá 50 thì PHẢI chạy lại kiểm tra tương đương trước khi tin.
+#
+# v0.1_bm25.yaml vẫn là BẢN CHUẨN để tái lập con số v0.1. File này là bản chạy nhanh.
+exp_id: v0.1_bm25_cap2000
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks.jsonl
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  out_dir:      outputs/v0.1_bm25_cap2000
+
+data:
+  holdout_size: 1000
+
+chunking:
+  max_words: 180
+  overlap_words: 45
+  prepend_name: true
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: max
+    tokenizer: regex
+    tokenizer_opts:
+      fold_tone: false
+    candidate_chunks: 2000   # ← DÒNG DUY NHẤT khác v0.1_bm25.yaml
