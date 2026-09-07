@@ -41,13 +41,18 @@
 | `freq>=11` | **+0,2982** |
 | toàn cục | +0,1640 |
 
-Ba con số chốt của toàn hệ thống:
+Ba con số chốt **của cấu hình `pool=max`**:
 
 ```
 R@5  = 0,7863   điểm xuất phát
-R@50 = 0,9503   TRẦN CỨNG của mọi reranker — không bao giờ vượt được
+R@50 = 0,9503   trần của reranker
 dư địa = 0,1640
 ```
+
+> ⚠️ **`max` KHÔNG còn là cấu hình được chọn.** Mục 7 cho thấy nó thua có ý nghĩa thống
+> kê. Các mốc hiện hành: **R@5 = 0,8116** (`mean_top2`, bản BM25 thuần) và
+> **R@50 = 0,9568** (`logsumexp`, trần reranker) ⇒ **dư địa reranker thật = 0,1501**.
+> Bảng ở mục 2 giữ nguyên vì nó là ĐƯỜNG CƠ SỞ dùng để trừ, không phải cấu hình nộp bài.
 
 **Ranh giới trách nhiệm:** 4,97% còn lại (1 − 0,9503) là việc của **P3** (không có ứng viên
 thì reranker chịu). 16,40% ở giữa là việc của **P4**.
@@ -116,8 +121,82 @@ chọn siêu tham số đo trên `dev`; `holdout` mở lại đúng một lần 
 
 ## 6. Hạn chế
 
-- Một cấu hình BM25 duy nhất. Chưa biết đường cơ sở này ổn định thế nào khi đổi
-  tokenizer hoặc cách gộp chunk→doc (chờ P3 chạy `bench_retrieval.py`).
+- Cách gộp chunk→doc đã quét (mục 7). **Tokenizer thì chưa** — cả đường cơ sở này lẫn
+  mọi kết luận của nó đều đứng trên `regex`, `fold_tone=false`. Chờ P3 chạy
+  `bench_retrieval.py` để biết chúng có sống sót khi đổi tokenizer không.
 - `dev` và `error_pool` đều đã lọc 11 câu "Vùng Chết"; public/private test **không** được
   lọc ⇒ cả hai tập **lạc quan hơn test theo cấu tạo**.
 - Tầng gán bằng `min`. Bản `max` cho phân bố khác (282/238/288/192 trên holdout) nhưng chưa đo.
+
+## 7. Cập nhật 07/09: quét cách gộp chunk→doc
+
+Đường cơ sở ở mục 2 dùng `pool=max`. Quét đủ sáu cách gộp trên cùng `dev` n=1.000
+(`configs/v0.1_bm25_cap2000.yaml`) cho thấy **`max` là lựa chọn tệ**:
+
+| pool | R@5 | R@50 | spread@5 | `freq=0` @5 | `freq>=11` @5 |
+|---|---:|---:|---:|---:|---:|
+| `max` (= N=1) | 0,7863 | 0,9503 | 0,2166 | 0,8073 | 0,6345 |
+| `mean_top2` | **0,8116** | 0,9540 | **0,1694** | 0,8067 | 0,6988 |
+| `mean_top3` | 0,8106 | 0,9540 | 0,1751 | 0,7952 | 0,6988 |
+| `mean_top4` | 0,7961 | 0,9530 | — | — | — |
+| `mean_top5` | 0,7869 | 0,9490 | — | — | — |
+| `logsumexp` | 0,8067 | **0,9568** | 0,2024 | **0,8172** | 0,6696 |
+| `sum` | sập | sập | — | — | — |
+
+**Kiểm định cặp** (bootstrap 10.000 lần + McNemar, `scripts/p4_paired_test.py`):
+
+| So sánh | K | hiệu | KTC 95% | McNemar | kết luận |
+|---|---:|---:|---|---|---|
+| `mean_top3` − `max` | 5 | +0,0243 | [+0,0073, +0,0415] | 56-33, p=0,0197 | **khác biệt thật** |
+| `mean_top3` − `logsumexp` | 5 | +0,0038 | [−0,0107, +0,0187] | 33-32, p≈1 | hoà |
+| `mean_top2` − `mean_top3` | 5 | +0,0010 | [−0,0100, +0,0120] | 18-17, p≈1 | hoà |
+| `logsumexp` − `mean_top3` | 50 | +0,0028 | [−0,0007, +0,0065] | 7-1, p=0,0771 | hoà |
+
+### 7.1 Đường cong N — độ liên quan tập trung ở 2–3 chunk
+
+`max` chính là `mean_top1`, nên sáu số trên hợp thành một đường cong theo N:
+
+```
+N=1  0,7863      N=2  0,8116      N=3  0,8106      N=4  0,7961      N=5  0,7869
+```
+
+Chữ U ngược, đỉnh tại N=2–3, hai đầu tụt về nhau. Cơ chế:
+
+- **N nhỏ:** một chunk may mắn quyết định cả văn bản. Luật khung có một đoạn khớp phần
+  khung diễn đạt chung là leo lên top — đúng cơ chế `R-ENTITY` trong `error_taxonomy.md`.
+- **N lớn:** pha loãng bằng những đoạn không liên quan. Văn bản mà độ liên quan tập trung
+  ở vài điều khoản bị thiệt nhất — mà đó là dạng điển hình của hỏi đáp pháp luật.
+- **N → ∞** chính là `sum` chuẩn hoá độ dài, và `sum` thì sập (0,0683 so với 0,2583 của
+  `max` ở thăm dò 150k chunk). Hai đầu đường cong khớp nhau.
+
+Cơ chế "không đệm 0 để khỏi phạt văn bản ngắn" **không chi phối kết quả này**: trung vị
+36 chunk/văn bản, p90 = 133, chỉ **1,0%** văn bản có ≤3 chunk.
+
+⇒ **Độ liên quan trong hỏi đáp pháp luật tiếng Việt tập trung trong ~2–3 chunk
+(~360–540 từ) của văn bản** — thường là một hai điều khoản.
+
+### 7.2 Cú tụt ở `freq=0` là của riêng N=3
+
+`mean_top3` là cách gộp duy nhất kéo tụt tầng `freq=0` (0,7952 so với 0,8073 của `max`).
+Đáng lo vì `freq=0` là tầng gần private test nhất. Nhưng `mean_top2` lấy **trọn** mức tăng
+ở `freq>=11` (0,6988, y hệt N=3) mà `freq=0` gần như không đổi (0,8067, −0,0006).
+
+⇒ Giả thiết *"`mean_topN` hại văn bản chưa từng thấy"* **bị bác bỏ**. Đó là đặc tính của
+riêng N=3, không phải của cả họ.
+
+### 7.3 Quyết định, và mức độ chắc chắn của nó
+
+```
+pool = logsumexp   cho pipeline CÓ rerank
+pool = mean_top2   cho bản BM25 thuần
+pool = max         KHÔNG dùng nữa
+```
+
+Lý do tách hai chế độ: reranker xáo lại top-50, nên R@5 của BM25 gần như vô nghĩa với
+pipeline có rerank — chỉ **R@50, tức trần của reranker**, là ràng buộc. Không rerank thì
+ngược lại.
+
+⚠️ **Đây là quyết định trên bằng chứng yếu.** `mean_top2`, `mean_top3`, `logsumexp` hoà
+nhau về thống kê ở mọi cặp đã kiểm. Phân thắng bại bằng **nguyên tắc thiết kế** —
+`logsumexp` không có tham số tự do nào để chọn sai; `mean_top2` không gây thoái lui ở
+`freq=0`. Không được viết trong bài báo như thể số liệu đã phân thắng bại.
