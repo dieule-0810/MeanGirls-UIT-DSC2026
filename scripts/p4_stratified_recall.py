@@ -100,21 +100,47 @@ def main() -> int:
 
     print(f"{'n':>4} | " + " | ".join(f"{counts.get(n, 0):>12}" for n in names) + f" |  {n_all:>10}")
 
-    # Chênh lệch tầng cao nhất ↔ thấp nhất, ở K lớn nhất.
-    k = max(ks)
-    have = [n for n in names if n in rows[k]]
-    if len(have) >= 2:
-        spread = max(rows[k][n] for n in have) - min(rows[k][n] for n in have)
-        print(f"\nChênh lệch giữa các tầng tại K={k}: {spread:.4f}")
-        if spread > 0.05:
-            print("  ⚠️ >5%. Với hệ thống KHÔNG học (BM25) thì bốn tầng lẽ ra phải")
-            print("     xấp xỉ bằng nhau. Chênh lớn ⇒ freq đang đo ĐỘ KHÓ NỘI TẠI")
-            print("     của câu hỏi, không chỉ hiệu ứng ghi nhớ. Ghi lại con số này")
-            print("     làm đường cơ sở và TRỪ ĐI khi so với mô hình fine-tuned.")
+    # Chênh lệch tầng cao nhất ↔ thấp nhất, ở MỌI K.
+    #
+    # 🔴 Bản trước chỉ in spread ở K lớn nhất, và in kết luận "bốn tầng xấp xỉ bằng
+    # nhau" dựa trên mỗi con số đó. Trên dev n=1000 điều đó gây hiểu sai nghiêm trọng:
+    #     K=5 → 0,2166      K=20 → 0,0578      K=50 → 0,0368
+    # Ở độ sâu ta THỰC SỰ nộp bài (K=5) bốn tầng chênh 21,7 điểm, còn ở K=50 thì gần
+    # như bằng nhau. Chỉ nhìn K=50 sẽ kết luận "BM25 không thiên lệch theo tầng" —
+    # ngược hẳn sự thật. Spread phải đọc theo từng K, và spread ở K=5 mới là con số
+    # dùng làm đường cơ sở để trừ khi so với mô hình fine-tuned.
+    print()
+    spreads = {}
+    for k in ks:
+        have = [n for n in names if n in rows[k]]
+        if len(have) < 2:
+            continue
+        spreads[k] = max(rows[k][n] for n in have) - min(rows[k][n] for n in have)
+        flag = "⚠️ " if spreads[k] > 0.05 else "✓ "
+        print(f"  {flag}spread giữa 4 tầng tại K={k:<3} = {spreads[k]:.4f}")
+
+    if len(spreads) >= 2:
+        k_lo, k_hi = min(spreads), max(spreads)
+        if spreads[k_lo] > 0.05 and spreads[k_hi] <= 0.05:
+            print(
+                f"\n  ĐỌC: spread co lại từ {spreads[k_lo]:.4f} (K={k_lo}) xuống "
+                f"{spreads[k_hi]:.4f} (K={k_hi}).\n"
+                "  Ở độ sâu lớn bốn tầng bao phủ như nhau ⇒ chênh lệch KHÔNG nằm ở khâu\n"
+                "  tìm kiếm mà nằm trọn ở khâu XẾP HẠNG. Đây là dư địa của reranker, và\n"
+                f"  spread tại K={k_lo} ({spreads[k_lo]:.4f}) là đường cơ sở phải TRỪ ĐI\n"
+                "  trước khi quy bất kỳ chênh lệch nào của mô hình fine-tuned cho ghi nhớ."
+            )
+        elif spreads[k_hi] > 0.05:
+            print(
+                f"\n  ⚠️ spread vẫn > 5% ở K={k_hi}. Bốn tầng KHÔNG bao phủ như nhau ⇒\n"
+                "  freq đang đo cả độ khó nội tại lẫn hiệu ứng ghi nhớ. Không tách được\n"
+                "  hai thứ đó bằng thí nghiệm này — ghi nhận là hạn chế, đừng kết luận."
+            )
         else:
-            print("  ✓ Bốn tầng xấp xỉ bằng nhau — đúng như kỳ vọng với hệ thống")
-            print("    không học. Mọi chênh lệch của mô hình fine-tuned sau này đọc")
-            print("    được là hiệu ứng ghi nhớ.")
+            print(
+                "\n  ✓ Bốn tầng xấp xỉ bằng nhau ở MỌI K — đúng kỳ vọng với hệ thống không\n"
+                "  học. Mọi chênh lệch của mô hình fine-tuned sau này đọc được là ghi nhớ."
+            )
 
     print("\nMọi % ở đây là % TRONG TẦNG. Khi viết bài báo phải quy đổi lại theo")
     print("tỉ lệ thật của bốn tầng (error_taxonomy.md — Cảnh báo về lấy mẫu).")
