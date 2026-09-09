@@ -41,4 +41,4 @@ venv/
 outputs/label_audit/*.json
 outputs/label_audit/packet.html
 outputs/label_audit/manual_audit.csv
-!outputs/label_audit/manual_audit_r*.csv
+!outputs/label_audit/manual_audit_r*.csv!outputs/label_audit/error_audit_r*.csv
