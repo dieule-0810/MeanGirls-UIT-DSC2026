@@ -20,12 +20,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Độ dài văn bản lớn và dữ liệu lệch phải nặng. Độ dài trung bình là 8.535 từ, gấp 1.77 lần trung vị. Có outlier bất thường lên tới 1.242.409 từ (gấp ~21 lần mốc p99 là 59k từ). 
-* Chia nhỏ văn bản (chunking) là bắt buộc vì không mô hình nhỏ nào nuốt trọn được ngữ cảnh quá lớn.
-* Mục 11: outlier lớn nhất (id 68843) là dữ liệu thật (QCVN bảng biểu dài), không phải lỗi gộp văn bản. Riêng outlier thứ 2 (id 4644) phát hiện nhiễm nội dung rác từ giao diện website.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:**
-* Bổ sung phân bố độ dài tính theo từng "Điều" (per-Điều) để có cơ sở chuẩn xác nhất cho câu hỏi chunk size 256 token.
+**Phương án tạm thời:** _(điền)_
 
 ## 2. Cấu trúc Điều N vs fallback
 
@@ -37,14 +34,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** 91.3% văn bản chứa cấu trúc "Điều N" rõ ràng (trung bình 37.6 điều/văn bản)
-* Tỷ lệ 8.7% còn lại cần fallback sang sliding-window chủ yếu thuộc về các thông tư, quy chuẩn (TCVN/QCVN).
-* Mục 11: "có Điều" không đảm bảo cắt theo Điều ra chunk kích thước hợp lý; văn bản QCVN/TCVN bảng biểu lớn cần sliding-window lồng bên trong Điều quá dài, không chỉ áp dụng cho 8.7% fallback.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:** 
-* Ưu tiên cắt theo Điều N
-* Thiết kế parser hỗ trợ cơ chế fallback sliding-window cho 8.7% văn bản phi cấu trúc này.
-* Dù có Điều (91.3%), nếu một Điều đơn lẻ vượt ngưỡng độ dài, vẫn áp sliding-window lồng bên trong đoạn đó, không chỉ dành riêng cho nhóm 8.7% fallback.
+**Phương án tạm thời:** _(điền)_
 
 ## 3. Trường thiếu (id/name/link/text)
 
@@ -90,12 +82,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Có 13.2% tài liệu khuyết trường name (1.125 file) và 0.2% khuyết trường text (passage rỗng, 20 file).
-* Nếu downstream code gọi trực tiếp doc["name"] hoặc doc["passage"] mà không có phòng ngự, hệ thống sẽ bị crash (sập) ngay lập tức.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:**
-* Bắt buộc dùng phương thức an toàn .get("name") và .get("passage", "") khi viết parser parse_corpus.py - phòng ngự cho cả case rỗng chưa biết ngoài 20 file đã xác định.
-* Loại 20 file rỗng này khỏi corpus_clean.jsonl, kèm loại 11 câu train vùng chết tương ứng (mục 9). Đây chỉ là 20/25 tổng số doc bị loại - 5 file còn lại là trùng-dư (mục 5, 9)
+**Phương án tạm thời:** _(điền)_
 
 ## 4. Phân bố số đáp án / câu hỏi
 
@@ -118,12 +107,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Có tới 92.1% câu hỏi chỉ có đúng 1 đáp án đúng, phần còn lại (khoảng 8%) rải rác từ 2 đến 5 đáp án. Không có câu hỏi nào bị rỗng text.
-* Nếu luôn nộp đủ 5 tài liệu cho mọi câu hỏi, Recall đạt tối đa nhưng Precision bị chặn trên ở 0.218 (theo phân bố ngay phía trên). Đây là trần, chỉ đạt khi mọi gold lọt top-5; thực tế Recall@5 < 1 nên Precision còn thấp hơn. Con số 0.300 trong scoring_behaviour.md là hiện vật của fixture 2 câu dùng để dò hành vi scoring, không phải Precision của tập test - không dùng lẫn hai ngữ cảnh.
---> Việc luôn nộp đủ 5 doc làm sụt giảm Precision nghiêm trọng.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:** 
-* Tận dụng bộ quyết định số lượng tài liệu (Calibration) ở Tuần 5 của P4 để tối ưu hóa Precision.
+**Phương án tạm thời:** _(điền)_
 
 ## 5. Trùng / gần trùng văn bản
 
@@ -252,45 +238,13 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
         ]
       }
     ]
-  },
-  "dup_passage_groups": [
-    [
-      "121575",
-      "84226"
-    ],
-    [
-      "158189",
-      "184972",
-      "206810"
-    ],
-    [
-      "254937",
-      "280171"
-    ],
-    [
-      "277743",
-      "35337"
-    ]
-  ]
+  }
 }
 ```
 
-**Nhận xét:** Kho dữ liệu tồn tại 4 nhóm trùng lặp nội dung thực tế (9 file).
-* Join #1 (đa đáp án): Trùng khớp 0 câu.
-* Join #2 (Rủi ro Label Noise): Chỉ có đúng 4 câu hỏi thực sự nằm trong vùng rủi ro (2 câu 1-answer, 2 câu 2-answer). Mô hình trả về file trùng nội dung nhưng khác ID sẽ bị tính 0 điểm im lặng.
-* Có hai URL dính liền nhau, không có dấu phân cách, trong khi 84226 thì link sạch bình thường. Lỗi nằm ngay trong dữ liệu gốc context_121575.json (có thể lỗi crawler nối chuỗi 2 lần khi lưu). 
-* 2/3 nhóm còn lại (254937/280171, 277743/35337) chỉ khác nhau ở cách viết hoa URL (The-thao-Y-te vs the-thao-y-te) (nhiều khả năng do server không phân biệt hoa/thường nên bị crawl trùng 2 lần thành 2 "văn bản" khác id). 
-* Riêng nhóm 158189/184972/206810: 1 link tiếng Anh (Decree-91-2016...), nội dung passage vẫn y hệt bản tiếng Việt, trang EN chưa dịch, crawler lấy nhầm nội dung gốc.
-* Không nhóm nào có >1 ID cùng là gold của các câu khác nhau.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:**
-* Cập nhật 20/8: 9 file exact-duplicate (hash passage giống hệt nhau) đã được xoá thẳng khỏi corpus (mục 9, giữ 4 đại diện, xoá 5 dư).
-* P3: các bước né trong hard-negative mining (loại thành viên cùng cụm trùng khỏi tập negative) chỉ còn áp dụng cho near-duplicate thật (nội dung gần giống nhưng không trùng hash tuyệt đối, hash-dedup không bắt được) - không áp dụng cho 9 file exact-duplicate đã bị xoá.
-* P4: nhãn lỗi riêng "trùng nội dung, sai ID" vẫn giữ cho phân tích lỗi lịch sử (dữ liệu train cũ trước khi xoá), nhưng sau khi rebuild corpus mới sẽ không còn phát sinh case mới thuộc 9 file này.
-* P2: Chuẩn hoá URL về lowercase (nếu crawl thêm dữ liệu), bước phòng ngừa cho case-duplicate/song-ngữ-giả CHƯA phát hiện.
-* Quy tắc chọn giữ/xoá passage trùng dư: ID nào đang là gold của ít nhất 1 câu hỏi trong train thì giữ, các ID còn lại trong nhóm bị xoá. (mục 9)
-* Nhóm 277743/35337: không ID nào từng là gold, nên không có căn cứ nội dung để chọn giữ ID nào - 35337 được giữ theo quy ước kỹ thuật (ID nhỏ hơn, để tái lập được kết quả mỗi lần chạy lại eda.py, chọn ID nào cũng không ảnh hưởng chất lượng retrieval).
-* 20 file rỗng passage không được tính là nhóm trùng (đã xử lý riêng ở mục 3), phép so trùng chỉ chạy trên passage khác rỗng.
+**Phương án tạm thời:** _(điền)_
 
 ## 6. Độ dài câu hỏi
 
@@ -304,11 +258,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Độ dài trung bình của câu hỏi là 19.8 từ (từ 4 đến 50 từ)
-* Không phát hiện câu hỏi ngắn bất thường hay rỗng text. Dữ liệu đầu vào ở phần này rất sạch sẽ.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:** 
-* Không cần can thiệp thêm, giữ nguyên quy trình hiện tại
+**Phương án tạm thời:** _(điền)_
 
 ## 7. Độ phủ doc_id (train vs corpus)
 
@@ -323,13 +275,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Corpus có tổng cộng 8.532 tài liệu nhưng tập train chỉ tham chiếu tới 3.105 tài liệu
-* Nghĩa là có tới 5.427 tài liệu (63.6%) chưa từng xuất hiện làm đáp án trong train. Không có id mồ côi (id trong train nhưng không có trong corpus).
-* Chưa có kiểm chứng xem các tài liệu này có xuất hiện trong tập public-official.json hay không.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:** 
-* Vẫn bắt buộc phải index đầy đủ toàn bộ 8.532 tài liệu trong hệ thống retrieval, tuyệt đối không cắt xén theo tập train. 
-* Giả thuyết '5.427 tài liệu chưa dùng là nguồn đáp án cho test' không thể kiểm chứng trực tiếp bằng doc_id (xem mục 10 - public-official.json ẩn nhãn hoàn toàn). Theo dõi gián tiếp qua chênh lệch Recall held-out vs leaderboard (ngưỡng <3%)
+**Phương án tạm thời:** _(điền)_
 
 ## 8. Mối quan hệ lỗi (3.1)
 
@@ -354,13 +302,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Số file khuyết name là 1.125, số file rỗng passage là 20. 
-* Phép giao cho thấy đúng 20 file bị cả hai lỗi. Toàn bộ file rỗng text thực chất nằm gọn hoàn toàn bên trong nhóm khuyết name. 
-* Đây là các "file siêu lỗi" do hệ thống cào dữ liệu bị hỏng cả cấu trúc lẫn nội dung.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:**
-* P2: bù đắp cấu trúc (null/"") để đảm bảo đúng 8.532 dòng, xử lý "khuyết" ở tầng index (P3 skip khi index()), không đụng vào nội dung.
-* Cập nhật 20/8: 20 file overlap (rỗng passage) nằm trong danh sách loại khỏi corpus (mục 3, 9). Vấn đề name thiếu (294/1.125 file) không đổi, vẫn treo.
+**Phương án tạm thời:** _(điền)_
 
 ## 9. Kiểm chứng Gold ID trỏ vào file lỗi (rỗng + trùng)
 
@@ -679,20 +623,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Phát hiện 543 câu hỏi trỏ đáp án vào file khuyết name và đặc biệt có 11 câu hỏi (0.16%) trỏ đáp án đúng vào các file rỗng passage (như file context_10533.json). 
-* 11 câu này thuộc "Vùng Chết Retrieval" (Unsolvable Questions) vì không chứa bất kỳ chữ nào để mô hình so khớp tìm kiếm.
-* Name: Chỉ 294/1125 (26.1%) file khuyết name từng thực sự được hỏi tới - phần lớn (73.9%) là lỗi vô hại về hiển thị. TRONG ĐÓ: một mình gold_id 23402 xuất hiện 65 lần trong 543 case - chiếm ~12% tổng số lần khuyết-name-là-gold, mức tập trung bất thường.
-* Passage: chỉ 6/20 (30.0%) file từng là gold, top offender 288457 gây ảnh hưởng 3 câu.
-* Duplicate: chỉ 3/9 file trùng từng là gold, qua 4 câu hỏi (Join_2 mục 5). Policy tự động chọn giữ đúng ID đang là gold cho cả 3/4 nhóm có gold, n_qids_need_gold_remap: 0 - không câu nào cần sửa nhãn tay.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:** Cập nhật 20/8
-* Loại khỏi corpus_clean.jsonl: 25 doc_id (20 rỗng + 5 trùng dư) --> corpus còn 8.507 dòng.
-* Loại khỏi train_split.json/holdout.json: 11 câu vùng chết, dùng extract_vung_chet_qids. Ghi danh sách 11 qid vào docs/excluded_questions.md, vì n_questions đổi từ 7000 --> 6989.
-* Xóa 5 ID trong recommended_remove ("gold thì giữ", bổ sung mục 5).
-* Train_split/holdout: không loại hay sửa - 5 ID bị xoá chưa bao giờ được dùng làm gold trực tiếp, toàn bộ gold hiện có đã trỏ đúng vào 4 ID được giữ.
-* Remap gold: 0 câu cần sửa (n_qids_need_gold_remap: 0).
-* Giữ nguyên .get("name") (mục 3).
-* Theo dõi gián tiếp qua chênh lệch Recall held-out vs leaderboard (ngưỡng <3%) như một kênh kiểm chứng bổ sung, dù rủi ro "test có mà holdout đã bỏ" giờ đã thấp hơn nhiều do có xác nhận trực tiếp thay vì suy luận.
+**Phương án tạm thời:** _(điền)_
 
 ## 10. Đối chiếu Train vs Public
 
@@ -710,14 +643,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Phép đối chiếu cho thấy giữa hai tập dữ liệu có đúng 0 mã câu hỏi trùng lặp (n_overlap_qids = 0), xác nhận không gian câu hỏi của hai tập hoàn toàn tách biệt. 
-* Do tập dữ liệu Public chính thức không đi kèm nhãn đáp án ("answer": null), team hoàn toàn không thể thực hiện đối chiếu chéo cấp độ ID tài liệu (doc_id) để kiểm chứng trực tiếp giả thuyết 5.427 tài liệu chưa dùng qua dữ liệu tĩnh.
-* Việc kiểm chứng trực tiếp giả thuyết 5.427 tài liệu là bất khả thi bằng phương pháp tĩnh do BTC ẩn nhãn.
-* Cập nhật 20/8: Trước đây mục này là cách suy luận gián tiếp duy nhất (vì public.answer luôn null). Giờ đã có xác nhận trực tiếp bằng văn bản từ BTC, mục này chỉ còn giá trị làm bằng chứng chéo, không còn là nguồn suy luận chính.
+**Nhận xét:** _(điền)_
 
-**Phương án hành động:**
-* Quan sát chênh lệch điểm số Recall thực tế: đối chiếu trực tiếp giữa điểm số trên tập kiểm thử nội bộ (Held-out Recall) và điểm số chạy thực tế trên Leaderboard công khai (Public Leaderboard Recall). 
-* Nếu độ lệch này được giữ ở mức nhỏ hơn 3%, giả thuyết hệ thống hoạt động ổn định trên toàn bộ không gian 8.532 tài liệu sẽ được xác minh.
+**Phương án tạm thời:** _(điền)_
 
 ## 11. Chi tiết outlier độ dài (Tra cứu thủ công)
 
@@ -785,17 +713,9 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Top 5 outlier đều has_dieu: true - tức đều rơi vào nhóm 91.3% "có cấu trúc Điều" (mục 2), không phải nhóm 8.7% cần fallback như nghi ngờ ban đầu ở mục 1. Tuy nhiên mức độ tin cậy của từng file khác nhau rõ rệt sau khi soi text_head/text_tail. 
-(Lưu ý) đây là top 5 văn bản dài nhất toàn corpus theo n_words. Không loại trừ khả năng còn văn bản khác ngoài top 5 này cũng bị nhiễm rác tương tự id 4644
-* id 68843 (1.242.409 từ, lớn nhất): nhiều khả năng là dữ liệu thật. text_head có dấu hiệu lỗi định dạng nhỏ ở mục lục, nhưng không có bằng chứng gộp nhầm 2 văn bản.
-* id 4644 (571.358 từ): phát hiện nghiêm trọng - text_tail chứa nguyên văn thông báo bảo mật của chính website nguồn, không phải nội dung QCVN 22-2018. Đây là ô nhiễm dữ liệu do crawler lấy nhầm phần giao diện/popup tài khoản lẫn vào nội dung văn bản.
-* id 42223, 164898, 12964: text_head/text_tail đều khớp hợp lý với link tương ứng (chữ ký "BỘ TRƯỞNG", danh sách bộ kit xét nghiệm, bảng vùng biển hàng hải) - chưa thấy dấu hiệu bất thường, nhưng mới chỉ soi 200 ký tự đầu/cuối, chưa xác nhận toàn văn.
-* Ngoài vấn đề đúng/sai dữ liệu, ~34511 từ cho mỗi khoảng giữa 2 Điều ở file 68843 cho thấy: có cấu trúc Điều không đảm bảo cắt theo Điều sẽ ra chunk kích thước hợp lý - với văn bản QCVN/TCVN nhiều bảng biểu, một Điều đơn lẻ vẫn có thể dài tới hàng chục nghìn từ.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:**
-* P2: Kiểm tra chay context_4644.json trước khi đưa vào corpus_clean.jsonl; grep thử các cụm từ đặc trưng ("đăng nhập", "rò rỉ mật khẩu", "Quý Khách") trên toàn corpus để biết đây là lỗi cá biệt hay lỗi crawler lặp lại ở nhiều file khác.
-* P2: Lưu ý lỗi định dạng mục lục nhỏ của id 68843; giữ nguyên trong corpus.
-* P2: Rà chay toàn văn 3 file còn lại (42223, 164898, 12964) - xác nhận cả 3 file đều sạch sẽ (không phải lỗi parser gộp file hay lỗi crawler). Độ dài lớn hoàn toàn do đặc thù văn bản gốc
+**Phương án tạm thời:** _(điền)_
 
 ## 12. Kiểm tra ô nhiễm dữ liệu do lỗi Crawler
 
@@ -818,12 +738,6 @@ Cập nhật ngày 20/8/2026: BTC đã xác nhận trên tập train đang có m
 }
 ```
 
-**Nhận xét:** Có 239 ứng viên nghi vấn (~2.8% corpus) dính từ khóa rộng.
-* Kiểm tra trực tiếp: gần như toàn bộ là False Positive - dùng "đăng nhập" đúng ngữ cảnh hành chính hợp pháp (cổng dịch vụ công, TABMIS, định danh điện tử...). KHÔNG coi các văn bản này là nhiễu BM25.
-* Số file thực sự ô nhiễm: chỉ 1 file - ID 4644, chứa chuỗi rác "bị rò rỉ mật khẩu và mất bảo mật...". Chỉ file này mới có rủi ro mất dữ liệu đuôi văn bản và gây term pollution thật cho BM25.
+**Nhận xét:** _(điền)_
 
-**Phương án tạm thời:**
-* P2: Bổ sung Regex lọc chuỗi vào clean_text (parse_corpus.py). Xác nhận sạch qua verify tự động + scan rộng độc lập.
-* Cập nhật: Đã chạy scan rộng không giới hạn độ dài lần cuối trước v0.1 (333 ứng viên, 0/333 khớp pattern rác - xem docs/final_pollution_scan_v0.1.txt)
-* P4: Riêng ID 4644 - passage đã bị cắt cụt phần đuôi (do clean_text xóa từ vị trí "rò rỉ mật khẩu" trở đi). Nếu case lỗi BM25 rơi vào ID này, không phải bug retrieval mà là hệ quả chủ động của bước làm sạch.
-* Giới hạn đã biết: "Sạch 100%" ở corpus_clean.jsonl chỉ nghĩa là sạch-theo-5-pattern-đã-biết (xem CRAWLER_JUNK_PATTERNS trong parse_corpus.py). Nếu BM25 error analysis gặp case lạ dính rác web (đăng nhập/mật khẩu/quý khách) không thuộc 5 cụm này, đó là bằng chứng cần bổ sung pattern mới, không phải bug ở tầng retrieval.
+**Phương án tạm thời:** _(điền)_
