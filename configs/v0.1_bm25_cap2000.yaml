@@ -35,7 +35,7 @@ data:
 chunking:
   max_words: 180
   overlap_words: 45
-  prepend_name: true
+  prepend_name: false       # chưa implement ở chunker; đã test không cần ở tầng rerank, chưa test ở BM25
 
 retrieval:
   top_k_retrieve: 100
