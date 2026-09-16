@@ -18,7 +18,7 @@ data:
 chunking:
   max_words: 180            # ~256 subword với tokenizer đa ngữ
   overlap_words: 45
-  prepend_name: true        # gắn tiêu đề văn bản vào đầu mỗi chunk
+  prepend_name: false        # gắn tiêu đề văn bản vào đầu mỗi chunk
 
 retrieval:
   top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống

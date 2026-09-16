@@ -1,0 +1,72 @@
+# v0.3_sylbigram_notonefold — ABLATION, KHÔNG PHẢI cấu hình nộp bài.
+#
+# Khác `configs/v0.3_bm25_best.yaml` ĐÚNG MỘT DÒNG: `fold_tone: false`.
+#
+# Vì sao tồn tại: đường cơ sở 0,8116 chạy trên `v0.1_bm25_cap2000.yaml` vốn đặt
+# `fold_tone: false`, còn lần chạy 0,8555 dùng `fold_tone: true`. Vậy khoản +0,0439 —
+# khoản lời lớn nhất của cả dự án — TRỘN HAI THAY ĐỔI: regex→syllable_bigram VÀ
+# fold_tone false→true. File này tách đôi khoản đó:
+#
+#     0,8116  regex           + fold_tone false   (đã có)
+#     ?????   syllable_bigram + fold_tone false   ← file này đo
+#     0,8555  syllable_bigram + fold_tone true    (đã có)
+#
+# Hiệu số thứ nhất là công của tokenizer, hiệu số thứ hai là công của fold_tone.
+# Đây đúng loại lỗi "trộn hai thay đổi trong một phép so" mà nhóm đã tự bắt được một
+# lần (HANDOFF_P4 mục 7.1) — bắt lần hai trước khi phản biện bắt hộ.
+#
+# Chạy:
+#   python -m scripts.p4_build_ranking --config configs/v0.3_sylbigram_notonefold.yaml \
+#       --questions data/dev.json \
+#       --out outputs/p4_bm25_ranking/dev_syl_notonefold.json --top-k 50
+#   python -m scripts.p4_paired_test --questions data/dev.json --k 5 \
+#       --a outputs/p4_bm25_ranking/dev_syl_notonefold.json \
+#       --b outputs/v0.3_bm25_best/ranking_full.json \
+#       --label-a syl_notonefold --label-b syl_tonefold
+#
+# Chi phí: một lần dựng chỉ mục (~4-5 phút) + 72 ms/câu. RAM ~7 GB — ĐỪNG chạy song
+# song với kiểm tra `candidate_chunks: null`, cái đó cũng ăn 6-7 GB.
+#
+# ⚠️ Chỉ mục KHÔNG dùng lại được từ lần chạy trước: đổi fold_tone là đổi từ vựng
+#    (1.215.933 thay vì 1.212.503) nên phải dựng lại từ đầu.
+
+exp_id: v0.3_sylbigram_notonefold
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks.jsonl
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  out_dir:      outputs/v0.3_sylbigram_notonefold
+
+chunking:
+  max_words: 180
+  overlap_words: 45
+  # false, không phải true: `chunker.py` CHƯA BAO GIỜ hiện thực cờ này (0/100.000 chunk
+  # mở đầu bằng tiêu đề). Ba config khác vẫn ghi `true` — đó là lời nói dối vô hại
+  # cho tới khi ai đó implement nó, rồi chunk đổi mà không ai biết vì sao.
+  prepend_name: false
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: mean_top2         # đỉnh đường cong mean_topN, N=1..5 (0,7863/0,8116/0,8106/0,7961/0,7869)
+    tokenizer: syllable_bigram
+    tokenizer_opts:
+      fold_tone: false      # ← DÒNG DUY NHẤT khác v0.3_bm25_best.yaml
+      min_len: 1
+    min_df: 1
+    candidate_chunks: 2000  # ⚠️ mới chỉ kiểm tương đương với null trên tokenizer `regex`.
+                            #    syllable_bigram có nnz 96,1M so với 43,8M → phân bố điểm
+                            #    chunk khác hẳn. PHẢI kiểm lại trên error_pool 300 câu
+                            #    (docs/reproduce.md mục 4) trước khi tin +0,0439.
+    n_jobs: 4
+    batch_size: 64

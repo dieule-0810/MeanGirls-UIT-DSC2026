@@ -1,0 +1,69 @@
+# v0.3_bm25_best — cấu hình BM25 của đường nộp bài.
+#
+# ⚠️ FILE NÀY ĐƯỢC DỰNG LẠI (14/09/2026, P4), KHÔNG PHẢI BẢN GỐC CỦA P3.
+#    `outputs/v0.3_bm25_best/run_meta.json` ghi `"config": "configs/v0.3_bm25_best.yaml"`
+#    nhưng file đó CHƯA BAO GIỜ được commit. Mọi trường dưới đây được khôi phục từ
+#    `run_meta.retriever`, trừ `tokenizer_opts` (run_meta không ghi) — xem ghi chú.
+#    P3 phải xác nhận trước khi dùng file này làm bản chuẩn tái lập.
+#
+# Bằng chứng khớp với lần chạy đã sinh ra R@5 = 0,8555 trên dev n=1000:
+#     n_chunks 524.422 · vocab 1.212.503 · avgdl 309,9 · nnz 96.134.846 · index 34,3s
+#
+# `fold_tone` KHÔI PHỤC BẰNG ĐO, không phải bằng đoán. Tách từ lại toàn bộ
+# `data/chunks.jsonl` với syllable_bigram ở cả hai giá trị:
+#     fold_tone: true   → vocab 1.212.503 · avgdl 309,9   ← KHỚP run_meta
+#     fold_tone: false  → vocab 1.215.933 · avgdl 309,9
+# Chỉ `true` khớp. Lệnh tái lập kiểm tra này nằm ở docs/reproduce.md mục 2.
+#
+# ✅ XÁC NHẬN ĐỘC LẬP (16/09/2026): chạy `p4_build_ranking` với CHÍNH file này trên
+#    public-official.json sinh ra chỉ mục có vocab 1.212.503 · nnz 96.134.846 ·
+#    avgdl 310 · 524.422 chunk / 8.507 doc — trùng khít `run_meta.json`. Cấu hình
+#    khôi phục đã được xác nhận bằng một lần dựng chỉ mục đầy đủ, không chỉ bằng
+#    phép đếm từ vựng.
+#    (Trường `index_seconds: 34.3` trong run_meta KHÔNG tái lập — đo lại ra 242,8 s.
+#     Đó là trường thời gian, không mô tả nội dung chỉ mục. Đừng dùng nó để kiểm.)
+#
+# 🔴 HỆ QUẢ PHẢI ĐỌC: đường cơ sở 0,8116 chạy trên `configs/v0.1_bm25_cap2000.yaml`
+#    vốn đặt `fold_tone: false`. Vậy khoản +0,0439 TRỘN HAI THAY ĐỔI:
+#    regex→syllable_bigram VÀ fold_tone false→true. Chưa tách ra được.
+#    Xem docs/reproduce.md mục 5 để chạy ablation tách đôi.
+exp_id: v0.3_bm25_best
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks.jsonl
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  out_dir:      outputs/v0.3_bm25_best
+
+chunking:
+  max_words: 180
+  overlap_words: 45
+  # false, không phải true: `chunker.py` CHƯA BAO GIỜ hiện thực cờ này (0/100.000 chunk
+  # mở đầu bằng tiêu đề). Ba config khác vẫn ghi `true` — đó là lời nói dối vô hại
+  # cho tới khi ai đó implement nó, rồi chunk đổi mà không ai biết vì sao.
+  prepend_name: false
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: mean_top2         # đỉnh đường cong mean_topN, N=1..5 (0,7863/0,8116/0,8106/0,7961/0,7869)
+    tokenizer: syllable_bigram
+    tokenizer_opts:
+      fold_tone: true       # ← khôi phục bằng đo, xem đầu file
+      min_len: 1
+    min_df: 1
+    candidate_chunks: 2000  # ⚠️ mới chỉ kiểm tương đương với null trên tokenizer `regex`.
+                            #    syllable_bigram có nnz 96,1M so với 43,8M → phân bố điểm
+                            #    chunk khác hẳn. PHẢI kiểm lại trên error_pool 300 câu
+                            #    (docs/reproduce.md mục 4) trước khi tin +0,0439.
+    n_jobs: 4
+    batch_size: 64
