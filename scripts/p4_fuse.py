@@ -71,12 +71,57 @@ def main() -> None:
                          "hai thứ hạng giống hệt nhau nên hợp nhất vô nghĩa")
     ap.add_argument("--rrf-k", type=int, default=60)
     ap.add_argument("--out", default=None, help="ghi thứ hạng của w tốt nhất")
+    ap.add_argument(
+        "--w", type=float, default=None,
+        help="CỐ ĐỊNH w, BỎ QUA quét. BẮT BUỘC dùng khi chạy trên tập thi "
+             "(public/private): quét w rồi lấy w tốt nhất trên chính tập đó là "
+             "TUNE TRÊN TẬP THI. Không có cờ này thì script quét w và ghi ra "
+             "thứ hạng của w tốt nhất — đúng trên dev, sai trên test.")
     a = ap.parse_args()
 
     q = json.load(open(a.questions, encoding="utf-8"))
     bm25 = json.load(open(a.bm25, encoding="utf-8"))
     rr = json.load(open(a.rerank, encoding="utf-8"))
     qids = [str(x) for x in q]
+
+    # ── Kiểm tra hợp đồng: hai file phải phủ đúng cùng tập qid ──
+    missing_b = [x for x in qids if x not in bm25]
+    missing_r = [x for x in qids if x not in rr]
+    if missing_b:
+        raise SystemExit(
+            f"❌ {len(missing_b)} qid thiếu trong --bm25 (vd {missing_b[:3]}). "
+            f"Hợp nhất sẽ im lặng trả rỗng cho các câu đó → 0 điểm.")
+    if missing_r:
+        raise SystemExit(
+            f"❌ {len(missing_r)} qid thiếu trong --rerank (vd {missing_r[:3]}). "
+            f"Nhiều khả năng file rerank dựng trên tập câu hỏi KHÁC.")
+
+    has_gold = all((q[x].get("answer") or None) is not None for x in q)
+
+    # ── Đường CỐ ĐỊNH w: dùng cho tập thi, và cho mọi lần đo muốn trung thực ──
+    if a.w is not None:
+        f = fuse(bm25, rr, qids, a.w, a.rrf_k, a.top_k)
+        print(f"w = {a.w:.2f} (CỐ ĐỊNH, không quét)  ·  rrf_k = {a.rrf_k}  ·  "
+              f"top_k = {a.top_k}  ·  n = {len(qids)}")
+        if has_gold:
+            base5 = recall_at(bm25, q, 5)
+            r5 = recall_at(f, q, 5)
+            print(f"BM25 R@5 = {base5:.4f}  →  hợp nhất R@5 = {r5:.4f}  "
+                  f"({r5 - base5:+.4f})")
+        else:
+            print("Tập không có nhãn (test) → không in Recall. Đúng như mong đợi.")
+        if a.out:
+            Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+            Path(a.out).write_text(json.dumps(f, ensure_ascii=False),
+                                   encoding="utf-8")
+            print(f"\n✅ {a.out} (w={a.w:.2f})")
+        return
+
+    if not has_gold:
+        raise SystemExit(
+            "❌ Tập câu hỏi không có nhãn nhưng không truyền --w. Quét w trên tập "
+            "không nhãn là vô nghĩa; quét trên tập thi là gian lận với chính mình. "
+            "Truyền --w với giá trị đã chốt trên dev.")
 
     base5 = recall_at(bm25, q, 5)
     print(f"BM25 R@5 = {base5:.4f}  ·  trần R@{a.top_k} = "

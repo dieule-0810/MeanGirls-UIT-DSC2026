@@ -25,7 +25,7 @@ paths:
 chunking:
   max_words: 180
   overlap_words: 45
-  prepend_name: true
+  prepend_name: false
 
 retrieval:
   top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống
