@@ -1,0 +1,35 @@
+# v0.3 — BM25 chốt sau lưới tokenizer (docs/bench_v0.2_tokenizer.md, dev n=1000).
+# syllable_bigram + mean_top2: R@5 = 0,8555 · R@50 = 0,9700 — cao nhất trong lưới 25 ô,
+# vượt cả pyvi lẫn underthesea mà KHÔNG cần thư viện tách từ nào.
+exp_id: v0.3_bm25_best
+seed: 42
+
+paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — không chạm
+  questions:    data/public-official.json
+  cache_dir:    data/cache
+  out_dir:      outputs/v0.3_bm25_best
+
+pipeline:
+  retriever: bm25
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    tokenizer: syllable_bigram
+    tokenizer_opts:
+      fold_tone: true
+      min_len: 1
+    pool: mean_top2
+    pool_tau: 1.0
+    min_df: 1
+    candidate_chunks: 2000   # ⚠️ không trung tính với mean_topN — docs/candidate_cap_check.md
+    n_jobs: 8
+    batch_size: 64
