@@ -504,3 +504,46 @@ def test_thieu_ca_hai_ten_truong_thi_bao_loi_ro(tmp_path):
     p = _viet_jsonl(tmp_path / "chunks.jsonl", [{"chunk_id": "1::0", "noi_dung": "x"}])
     with pytest.raises(ValueError, match="INTERFACES"):
         load_chunks(p)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gắn tiêu đề văn bản (src/retrieval/enrich.py) — H6
+# ─────────────────────────────────────────────────────────────────────────────
+HEAD = ("BỘ Y TẾ ------- CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM Độc lập - Tự do - Hạnh phúc "
+        "--------------- Số: 15/2022/TT-BYT Hà Nội, ngày 1 tháng 3 năm 2022 "
+        "THÔNG TƯ QUY ĐỊNH VỀ KHÁM BỆNH TỪ XA Căn cứ Luật Khám bệnh...")
+
+
+def test_extract_title_lay_so_hieu_va_ten():
+    from src.retrieval.enrich import extract_title
+
+    t = extract_title(HEAD)
+    assert t.startswith("15/2022/TT-BYT"), t
+    assert "THÔNG TƯ QUY ĐỊNH VỀ KHÁM BỆNH TỪ XA" in t
+    assert "Căn cứ" not in t, "phải dừng trước phần căn cứ pháp lý"
+    assert "CỘNG HÒA" not in t, "quốc hiệu có ở MỌI văn bản — thêm vào mọi chunk là phá IDF"
+
+
+def test_extract_title_hau_to_chu_thuong():
+    """QĐ-TTg, NQ-HĐND: hậu tố chữ thường có thật, cắt mất là sai số hiệu."""
+    from src.retrieval.enrich import extract_title
+
+    assert extract_title("--- Số: 569/QĐ-TTg Hà Nội QUYẾT ĐỊNH BAN HÀNH CHIẾN LƯỢC Điều 1.").startswith(
+        "569/QĐ-TTg"
+    )
+
+
+def test_extract_title_khong_co_thi_tra_none():
+    from src.retrieval.enrich import extract_title
+
+    assert extract_title("Mật độ sinh vật gây hại (con/m2) = Tổng số điều tra") is None
+
+
+def test_prepend_titles_khong_sua_tai_cho():
+    from src.retrieval.enrich import prepend_titles
+
+    goc = [dict(c) for c in CHUNKS]
+    moi, st = prepend_titles(CHUNKS, {"740": "78/2021/TT-BTC THÔNG TƯ VỀ HOÁ ĐƠN"})
+    assert CHUNKS == goc, "hàm phải trả bản mới, không sửa chunk gốc — nếu không A/B vô nghĩa"
+    assert st["n_prepended"] == 2 and st["n_no_title"] == len(CHUNKS) - 2
+    assert moi[0]["text"].startswith("78/2021/TT-BTC THÔNG TƯ VỀ HOÁ ĐƠN. ")
