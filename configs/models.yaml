@@ -68,6 +68,20 @@ rerankers:
       ở private test. 96M/117.6M nằm ở lớp embedding — transformer thật chỉ ~21.6M.
 
 bi_encoders:
+  - repo: AITeamVN/Vietnamese_Embedding_v2
+    revision: 18b44161e041bf1d3a333ab5144b5b7b93f914d2   # hash ĐẦY ĐỦ, không rút gọn
+    params: 567_800_000
+    arch: xlm-roberta-large
+    max_seq_len: 8192
+    license: apache-2.0
+    approved: true          # BTC đã duyệt (P3 xác nhận với P1, 13/09/2026)
+    note: >
+      ỨNG VIÊN SỐ 1 cho tầng dense. Fine-tune từ BAAI/bge-m3 cho tiếng Việt, tập huấn luyện
+      có văn bản pháp luật. Cùng XLM-R-large + cùng tokenizer với bge-m3 và với
+      AITeamVN/Vietnamese_Reranker ⇒ một đường code dùng chung cho cả embed lẫn rerank.
+      Thêm vào file này ngày 13/09; các dòng khác pin hash 12 ký tự, dòng này pin đủ 40 —
+      hash đầy đủ không bao giờ mơ hồ, nên dùng dạng đó cho mọi model thêm mới từ nay.
+
   - repo: BAAI/bge-m3
     revision: 5617a9f61b02
     params: 567_800_000

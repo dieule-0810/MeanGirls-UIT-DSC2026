@@ -235,6 +235,37 @@ class BaseRetriever(ABC):
         check_contract(results, len(queries), top_k)
         return results
 
+    def search_with_anchor(
+        self, queries: list[str], top_k: int
+    ) -> list[list[tuple[str, float, str]]]:
+        """
+        Như `search()` nhưng kèm **chunk đại diện** của mỗi doc: `(doc_id, score, chunk_id)`.
+
+        INTERFACES §3b đưa điều khoản này vào hợp đồng vì reranker cần một đoạn văn bản cụ thể
+        để chấm — `search()` gộp lên doc rồi vứt mất chunk nào đã thắng.
+
+        Quy ước phá hoà (bắt buộc tường minh): điểm chunk cao nhất; hoà thì `chunk_id` NHỎ NHẤT.
+        17/300 câu error_pool có ≥2 chunk cùng văn bản hoà điểm tuyệt đối — không phá hoà thì
+        việc chọn đoạn nào phụ thuộc `candidate_chunks`, tức kết quả đổi theo một tham số tốc độ.
+        """
+        if top_k < 1:
+            raise ValueError("top_k phải >= 1")
+        n_cand = max(self.candidate_chunks, top_k)
+        out: list[list[tuple[str, float, str]]] = []
+        for idx, sc in self.candidates(list(queries), n_cand):
+            ranked = self.pool_candidates(idx, sc, top_k)
+            # Khoá sắp xếp (-điểm, chunk_id): nhỏ hơn là tốt hơn ⇒ điểm cao nhất trước,
+            # hoà thì chunk_id nhỏ nhất. Một biểu thức, không nhánh if lồng.
+            anchor: dict[str, tuple[float, str]] = {}
+            for i, s in zip(idx, sc):
+                d = self.chunk_doc_ids[int(i)]
+                key = (-float(s), self.chunk_ids[int(i)])
+                if d not in anchor or key < anchor[d]:
+                    anchor[d] = key
+            out.append([(d, s, anchor[d][1]) for d, s in ranked])
+        check_contract([[(d, s) for d, s, _ in r] for r in out], len(queries), top_k)
+        return out
+
     def search_chunks(self, queries: list[str], top_k: int) -> list[list[tuple[str, float]]]:
         """Như `search()` nhưng trả `chunk_id`, chưa gộp — cho P4 rerank và RRF mức chunk."""
         out = []

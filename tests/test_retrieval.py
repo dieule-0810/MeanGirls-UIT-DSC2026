@@ -389,8 +389,41 @@ def test_build_retriever_tu_config():
 
 
 def test_build_retriever_ten_la():
+    # KHÔNG dùng "dense" làm tên lạ: từ 13/09 nó là retriever thật (src/retrieval/dense.py),
+    # nên test sẽ chết vì thiếu tham số chứ không vì tên lạ — đúng kiểu test xanh/đỏ sai lý do.
     with pytest.raises(KeyError, match="chưa đăng ký"):
-        build_retriever({"type": "dense"})
+        build_retriever({"type": "khong_co_retriever_nao_ten_nay"})
+
+
+def test_search_with_anchor_tra_chunk_dai_dien():
+    """INTERFACES §3b: mỗi doc phải kèm chunk đại diện để reranker có đoạn cụ thể mà chấm."""
+    r = BM25Retriever(pool="max", verbose=False)
+    r.index(CHUNKS)
+    res = r.search_with_anchor(["huỷ hoá đơn điện tử"], top_k=3)[0]
+    assert res, "không truy hồi được gì"
+    for doc_id, score, chunk_id in res:
+        assert isinstance(chunk_id, str)
+        assert chunk_id in r.chunk_ids
+        assert r.chunk_doc_ids[r.chunk_ids.index(chunk_id)] == doc_id, (
+            "chunk đại diện phải thuộc đúng văn bản đó"
+        )
+    docs_only = [(d, s) for d, s, _ in res]
+    assert docs_only == r.search(["huỷ hoá đơn điện tử"], top_k=3)[0], (
+        "search_with_anchor không được đổi thứ hạng so với search"
+    )
+
+
+def test_anchor_pha_hoa_bang_chunk_id_nho_nhat():
+    """Hai chunk cùng doc hoà điểm tuyệt đối → phải chọn chunk_id nhỏ nhất, không phụ thuộc
+    thứ tự duyệt hay candidate_chunks."""
+    same = [
+        {"chunk_id": "900::0007", "doc_id": "900", "position": 7, "text": "thuế thu nhập cá nhân"},
+        {"chunk_id": "900::0002", "doc_id": "900", "position": 2, "text": "thuế thu nhập cá nhân"},
+    ]
+    r = BM25Retriever(pool="max", verbose=False)
+    r.index(same)
+    _, _, cid = r.search_with_anchor(["thuế thu nhập cá nhân"], top_k=1)[0][0]
+    assert cid == "900::0002", f"phá hoà sai: {cid}"
 
 
 def test_build_retriever_thieu_type():
