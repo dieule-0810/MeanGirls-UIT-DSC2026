@@ -1,0 +1,62 @@
+# v0.5_cand_null — KIỂM TƯƠNG ĐƯƠNG, không phải cấu hình nộp bài.
+#
+# Khác `configs/v0.3_bm25_best.yaml` ĐÚNG MỘT DÒNG: `candidate_chunks: null`.
+#
+# Vì sao tồn tại: `candidate_chunks: 2000` cắt bớt ứng viên trước khi gộp chunk→doc.
+# Nó từng được chứng minh tương đương với `null` (300/300 câu error_pool cho top-50
+# giống hệt) — NHƯNG chỉ trên tokenizer `regex`, nnz 43,8 triệu. Đường nộp bài hiện
+# chạy `syllable_bigram`, nnz 96,1 triệu, tức phân bố điểm chunk khác hẳn. Nếu 2000
+# không còn tương đương thì nó đang âm thầm cắt mất văn bản đúng, và cả khoản +0,0429
+# quy cho tokenizer cũng bị pha tạp bởi hiệu ứng cắt ứng viên.
+#
+# Chạy trên error_pool 300 câu (tập chưa dùng để chọn bất cứ thứ gì):
+#   python -m scripts.p4_build_ranking --config configs/v0.3_bm25_best.yaml \
+#       --questions data/error_pool.json \
+#       --out outputs/v0.5_cand/errpool_cand2000.json --top-k 50
+#   python -m scripts.p4_build_ranking --config configs/v0.5_cand_null.yaml \
+#       --questions data/error_pool.json \
+#       --out outputs/v0.5_cand/errpool_candnull.json --top-k 50
+#
+# ⚠️ RAM: bỏ cắt ứng viên trên sylbigram tốn khoảng 6-7 GB, không phải 3,1 GB.
+#    Đóng hết thứ khác trước khi chạy. Truy vấn cũng chậm hơn đáng kể.
+#
+# Đọc kết quả: xem docs/ trong tin nhắn P4 — so top-50 theo từng câu, không so Recall.
+# Recall giống nhau vẫn có thể che giấu việc hai bên trả về tập văn bản khác nhau.
+
+exp_id: v0.5_cand_null
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks.jsonl
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  out_dir:      outputs/v0.5_cand
+
+chunking:
+  max_words: 180
+  overlap_words: 45
+  # false, không phải true: `chunker.py` CHƯA BAO GIỜ hiện thực cờ này (0/100.000 chunk
+  # mở đầu bằng tiêu đề). Ba config khác vẫn ghi `true` — đó là lời nói dối vô hại
+  # cho tới khi ai đó implement nó, rồi chunk đổi mà không ai biết vì sao.
+  prepend_name: false
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: mean_top2         # đỉnh đường cong mean_topN, N=1..5 (0,7863/0,8116/0,8106/0,7961/0,7869)
+    tokenizer: syllable_bigram
+    tokenizer_opts:
+      fold_tone: true       # ← khôi phục bằng đo, xem đầu file
+      min_len: 1
+    min_df: 1
+    candidate_chunks: null  # ← DÒNG DUY NHẤT khác v0.3_bm25_best.yaml
+    n_jobs: 4
+    batch_size: 64
