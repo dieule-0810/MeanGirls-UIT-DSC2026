@@ -36,7 +36,7 @@ sys.path.insert(0, str(REPO))
 import yaml  # noqa: E402
 
 from src.common.io import load_chunks, load_questions, write_predictions  # noqa: E402
-from src.retrieval.base import build_retriever  # noqa: E402
+from src.retrieval.base import build_retriever, retriever_spec  # noqa: E402
 
 
 def git_commit() -> str:
@@ -77,38 +77,25 @@ def demo_data() -> tuple[list[dict], dict]:
 # Các tầng
 # ─────────────────────────────────────────────────────────────────────────────
 def stage_retrieve(cfg: dict, chunks: list[dict], texts: list[str], top_k: int, demo: bool):
-    """Dựng retriever từ config rồi truy hồi kèm chunk đại diện (INTERFACES §3b)."""
-    pipe = cfg.get("pipeline", {})
-    kind = pipe.get("retriever") or _infer_retriever_kind(cfg)
-    spec = dict(cfg["retrieval"][kind])
-    spec["type"] = kind
-    if demo:
-        # corpus giả 6 chunk: cache token và embedding encode sẵn đều vô nghĩa
-        spec.pop("cache_dir", None)
-        spec.pop("embeddings_path", None)
-    elif kind == "dense" and cfg["paths"].get("embeddings"):
-        spec.setdefault("embeddings_path", cfg["paths"]["embeddings"])
-    elif kind == "bm25" and cfg["paths"].get("cache_dir"):
-        spec.setdefault("cache_dir", cfg["paths"]["cache_dir"])
+    """
+    Dựng retriever từ config rồi truy hồi kèm chunk đại diện (INTERFACES §3b).
+
+    `hybrid` (BM25+dense hợp nhất RRF) đi qua đúng nhánh này, không cần tầng riêng: theo
+    INTERFACES §3 hợp nhất là việc NỘI BỘ của retriever, nên với runner nó chỉ là một
+    `type` khác. `retriever_spec()` lo phần nối đường dẫn vào các nguồn con.
+    """
+    try:
+        spec = retriever_spec(cfg, demo=demo)
+    except ValueError as e:
+        raise SystemExit(f"❌ {e}") from e
 
     r = build_retriever(spec)
-    print(f"── retrieve: {kind} ──")
+    print(f"── retrieve: {spec['type']} ──")
     t0 = time.perf_counter()
     r.index(chunks)
     ranked = r.search_with_anchor(texts, top_k)
     print(f"   {len(texts)} câu trong {time.perf_counter() - t0:.1f}s")
     return r, ranked
-
-
-def _infer_retriever_kind(cfg: dict) -> str:
-    """Config chỉ có một khối retriever thì không bắt người dùng khai lại tên nó."""
-    kinds = [k for k in cfg.get("retrieval", {}) if isinstance(cfg["retrieval"][k], dict)]
-    if len(kinds) != 1:
-        raise SystemExit(
-            f"❌ `retrieval` có {len(kinds)} khối ({kinds}). Khai rõ `pipeline.retriever: <tên>` "
-            f"để không ai phải đoán bản chạy dùng cái nào."
-        )
-    return kinds[0]
 
 
 def stage_rerank(cfg: dict, chunks: list[dict], qids, texts, ranked, top_k_submit: int):

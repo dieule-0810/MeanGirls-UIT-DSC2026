@@ -1,0 +1,71 @@
+# v0.8-demo — KHÔNG PHẢI THÍ NGHIỆM. Đây là config khói cho `src/retrieval/hybrid.py`.
+#
+# Hai nguồn đều là BM25, chỉ khác tokenizer, nên nó chạy được trên máy CHƯA CÀI TORCH và chưa
+# có `data/embeddings.npy` — đúng chế độ "viết script trước, chạy dữ liệu sau" của
+# docs/pipeline_e2e_plan.md. Cấu hình thật để đo là `configs/v0.8_hybrid_rrf.yaml` (BM25+dense).
+#
+# ⚠️ ĐỪNG ghi kết quả chạy từ file này vào experiments.csv. Hợp nhất hai biến thể BM25 với nhau
+# gần như không sinh ra thông tin mới: hai tokenizer cùng nhìn một tín hiệu từ vựng, nên chúng
+# bất đồng ít và RRF không có gì để hoà giải. Giá trị của giả thuyết H4 nằm ở chỗ hợp nhất hai
+# nguồn nhìn HAI tín hiệu khác nhau (từ vựng ↔ ngữ nghĩa).
+#
+#     python scripts/run_pipeline.py --config configs/v0.8_hybrid_demo.yaml --demo --eval
+#     python scripts/tune_rrf.py     --config configs/v0.8_hybrid_demo.yaml --demo
+exp_id: v0.8_hybrid_demo
+seed: 42
+
+paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json
+  train_split:  data/train_split.json
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — không chạm
+  questions:    data/public-official.json
+  cache_dir:    data/cache
+  out_dir:      outputs/v0.8_hybrid_demo
+
+pipeline:
+  retriever: hybrid
+
+retrieval:
+  top_k_submit: 5
+  ranking_full_k: 50
+
+  hybrid:
+    fuse_level: chunk
+    rrf_k: 60
+    absent_rank: null
+    doc_depth: 200
+    source_depth: null
+    pool: mean_top2
+    pool_tau: 1.0
+    candidate_chunks: 500
+
+    sources:
+      sylbigram:
+        type: bm25
+        weight: 0.6
+        k1: 1.5
+        b: 0.75
+        tokenizer: syllable_bigram
+        tokenizer_opts: {fold_tone: true, min_len: 1}
+        pool: mean_top2
+        candidate_chunks: 500
+        verbose: false
+      whitespace:
+        type: bm25
+        weight: 0.4
+        k1: 1.5
+        b: 0.75
+        # `whitespace` giữ nguyên số hiệu văn bản ("78/2021/TT-BTC") thành một token, còn
+        # `syllable_bigram` băm nó ra — đó là chỗ hai nguồn thật sự bất đồng, và là lý do
+        # config khói này không hoàn toàn rỗng nghĩa.
+        tokenizer: whitespace
+        pool: mean_top2
+        candidate_chunks: 500
+        verbose: false
+
+tune_rrf:
+  grid_w: "0:1:0.25"
+  grid_k: "20,60"
+  levels: "chunk,doc"

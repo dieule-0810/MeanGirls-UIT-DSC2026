@@ -308,6 +308,55 @@ def available_retrievers() -> list[str]:
     return sorted(_REGISTRY)
 
 
+def infer_retriever_kind(cfg: dict) -> str:
+    """Config chỉ có một khối retriever thì không bắt người dùng khai lại tên nó."""
+    kinds = [k for k in cfg.get("retrieval", {}) if isinstance(cfg["retrieval"][k], dict)]
+    if len(kinds) != 1:
+        raise ValueError(
+            f"`retrieval` có {len(kinds)} khối ({kinds}). Khai rõ `pipeline.retriever: <tên>` "
+            f"để không ai phải đoán bản chạy dùng cái nào."
+        )
+    return kinds[0]
+
+
+def retriever_spec(cfg: dict, kind: str | None = None, demo: bool = False) -> dict:
+    """
+    `cfg` (YAML đã đọc) → spec truyền thẳng vào `build_retriever()`.
+
+    Làm ba việc mà mọi script đều phải làm và trước đây mỗi script tự làm một kiểu:
+      1. chọn khối retriever (`pipeline.retriever`, hoặc suy ra nếu chỉ có một khối);
+      2. nối `paths.embeddings` / `paths.cache_dir` vào nguồn cần chúng — kể cả nguồn NẰM
+         TRONG `hybrid.sources`, nơi tên đường dẫn không thể tự tìm đến;
+      3. ở `--demo` thì gỡ hết cache và embedding: corpus giả vài trăm chunk mà nạp ma trận
+         embedding của 524.422 chunk thật là lỗi "vân tay không khớp", hoặc tệ hơn, không lỗi.
+
+    Đệ quy vào `sources` nên hybrid lồng hybrid vẫn đúng.
+    """
+    kind = kind or cfg.get("pipeline", {}).get("retriever") or infer_retriever_kind(cfg)
+    return _resolve_spec(kind, cfg["retrieval"][kind], cfg.get("paths", {}) or {}, demo)
+
+
+def _resolve_spec(kind: str, raw: dict, paths: dict, demo: bool) -> dict:
+    spec = dict(raw)
+    spec["type"] = kind
+    if "sources" in spec:
+        spec["sources"] = {
+            name: _resolve_spec(sub.get("type", name), sub, paths, demo)
+            for name, sub in spec["sources"].items()
+        }
+        # `weight` là tham số của hybrid, không phải của retriever con — `_resolve_spec` giữ
+        # nguyên nó trong spec con và `HybridRetriever.__init__` sẽ lấy ra.
+        return spec
+    if demo:
+        spec.pop("cache_dir", None)
+        spec.pop("embeddings_path", None)
+    elif kind == "dense" and paths.get("embeddings"):
+        spec.setdefault("embeddings_path", paths["embeddings"])
+    elif kind == "bm25" and paths.get("cache_dir"):
+        spec.setdefault("cache_dir", paths["cache_dir"])
+    return spec
+
+
 def build_retriever(spec: dict) -> BaseRetriever:
     """`{"type": "bm25", "k1": 1.5, ...}` → instance. Không hằng số hard-code (INTERFACES.md mục 6)."""
     spec = dict(spec)

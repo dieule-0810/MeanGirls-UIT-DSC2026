@@ -1,0 +1,109 @@
+# v0.8 — Hợp nhất BM25 + dense bằng RRF. Thí nghiệm của P3 (KPI Recall@50).
+#
+# Giả thuyết H4 (docs/pipeline_e2e_plan.md vòng 3): hợp nhất THỨ HẠNG giữ được bề rộng của BM25
+# và lấy phần đỉnh của dense; cộng ĐIỂM thì không, vì hai thang không so được (BM25 dương không
+# chặn trên, cosine ∈ [−1,1]). Câu hỏi phụ mà `scripts/p4_fuse.py` chưa trả lời được: hợp nhất ở
+# mức CHUNK hay mức DOC thì tốt hơn — `fuse_level` có cả hai, `scripts/tune_rrf.py` đo cả hai.
+#
+# Mốc phải vượt (dev n=1000, docs/bench_v0.2_tokenizer.md):
+#     BM25 syllable_bigram + mean_top2 → R@5 = 0,8555 · R@50 = 0,9700
+# Không vượt RÕ thì theo plan.md Tuần 2 là dừng lại debug chunking/gộp, KHÔNG đi tiếp fine-tune.
+#
+# ⚠️ CẦN data/embeddings.npy trước khi chạy thật:
+#     python scripts/encode_corpus.py --config configs/v0.4_dense.yaml
+# Chưa có file đó thì DenseRetriever sẽ tự encode tại chỗ — 524.422 chunk, đừng để nó xảy ra
+# ngoài ý muốn. Chạy `--demo` hoặc `--dry-run` để kiểm đường ống trước.
+#
+# ⚠️ w và rrf_k dưới đây là GIÁ TRỊ KHỞI ĐIỂM mượn từ prototype của P4 (chọn trên dev_sub300,
+# tức chọn trên chính tập báo cáo). Phải chạy `scripts/tune_rrf.py` để chốt lại trên train_split
+# rồi mới dùng để nộp. Đừng chép hai con số này vào bài báo như thể chúng đã được chốt.
+exp_id: v0.8_hybrid_rrf
+seed: 42
+
+paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json          # tập BÁO CÁO của tune_rrf
+  train_split:  data/train_split.json  # tập CHỌN siêu tham số của tune_rrf
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — không chạm
+  questions:    data/public-official.json
+  embeddings:   data/embeddings.npy
+  cache_dir:    data/cache
+  out_dir:      outputs/v0.8_hybrid_rrf
+
+pipeline:
+  retriever: hybrid
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+
+  hybrid:
+    # chunk → RRF trên thứ hạng chunk rồi mới gộp lên doc (pool ở ngay dưới có tác dụng).
+    # doc   → mỗi nguồn tự gộp bằng pool CỦA NÓ rồi RRF trên thứ hạng doc (= cách p4_fuse làm;
+    #         khi đó `pool` của hybrid bắt buộc là max, vì nó đã thành phép đồng nhất).
+    fuse_level: chunk
+    rrf_k: 60
+
+    # null = RRF cổ điển: vắng mặt ở một nguồn thì nguồn đó không đóng góp gì.
+    # Đặt số (p4_fuse dùng top_k+1000, p5_knn_fuse dùng 1000000) để tái lập ĐÚNG hai prototype
+    # đó — xem ghi chú về dấu trong src/retrieval/hybrid.py::rrf_from_ranks.
+    absent_rank: null
+
+    # Chỉ có tác dụng khi fuse_level=doc: mỗi nguồn xếp sâu bao nhiêu doc trước khi hợp nhất.
+    doc_depth: 200
+
+    # Số chunk mỗi nguồn trả về để hợp nhất. null = lấy theo candidate_chunks bên dưới.
+    source_depth: null
+
+    pool: mean_top2      # gộp chunk→doc SAU khi hợp nhất (chỉ dùng ở fuse_level=chunk)
+    pool_tau: 1.0
+    candidate_chunks: 2000
+
+    sources:
+      # Nguồn ĐẦU TIÊN là nguồn mà `tune_rrf.py --grid-w` quét trọng số; các nguồn còn lại
+      # chia phần còn lại theo tỉ lệ. Để BM25 đứng đầu vì nó là nguồn rẻ, không GPU, và là
+      # đường lui nếu dense không đóng góp gì.
+      bm25:
+        type: bm25
+        weight: 0.6
+        k1: 1.5
+        b: 0.75
+        tokenizer: syllable_bigram
+        tokenizer_opts:
+          fold_tone: true
+          min_len: 1
+        pool: mean_top2        # chỉ dùng khi fuse_level=doc
+        pool_tau: 1.0
+        min_df: 1
+        candidate_chunks: 2000
+        n_jobs: 8
+        batch_size: 64
+
+      dense:
+        type: dense
+        weight: 0.4
+        repo: AITeamVN/Vietnamese_Embedding_v2
+        revision: 18b44161e041bf1d3a333ab5144b5b7b93f914d2
+        pooling: cls
+        normalize: true
+        query_prefix: ""
+        passage_prefix: ""
+        trust_remote_code: false
+        max_length: 512
+        batch_size: 32
+        query_batch_size: 64
+        device: auto
+        fp16: true
+        pool: mean_top2        # chỉ dùng khi fuse_level=doc
+        pool_tau: 1.0
+        candidate_chunks: 2000
+
+# Lưới cho scripts/tune_rrf.py
+tune_rrf:
+  grid_w: "0:1:0.1"
+  grid_k: "20,60,100"
+  levels: "chunk,doc"
+  select_on: "recall@5"
+  recall_at: "5,20,50"
