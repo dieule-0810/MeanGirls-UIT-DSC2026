@@ -29,7 +29,7 @@ def recalls(ranking: dict, questions: dict, k: int) -> dict[str, float]:
     out = {}
     for qid, v in questions.items():
         gold = {str(a) for a in v["answer"]}
-        got = {d for d, _, _ in ranking[str(qid)][:k]}
+        got = {str(r[0]) for r in ranking[str(qid)][:k]}
         out[str(qid)] = len(gold & got) / len(gold)
     return out
 
