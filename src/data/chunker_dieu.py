@@ -307,7 +307,7 @@ def run_chunker(input_path: Path, out_path: Path, chunk_size: int, overlap: int)
     count_chunks = 0
     fallback_docs = 0
     
-    with open(input_path, "r", encoding="utf-8") as in_f, open(out_path, "w", encoding="utf-8") as out_f:
+    with open(input_path, "r", encoding="utf-8") as in_f, open(out_path, "w", encoding="utf-8", newline="\n") as out_f:
         for line in in_f:
             count_docs += 1
             doc = json.loads(line)
