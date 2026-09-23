@@ -1,0 +1,65 @@
+# v0.5_chunk_dieu — ĐO THỬ chunking theo Điều của P1. KHÔNG phải cấu hình nộp bài.
+#
+# Khác `configs/v0.3_bm25_best.yaml` ĐÚNG MỘT DÒNG: `paths.chunks`.
+# Mọi tham số BM25 giữ nguyên, để phép so là một biến.
+#
+# Trước khi chạy: đổi tên file P1 gửi và đặt vào data/
+#     data/chunks_dieu.jsonl        (432,142 chunk, 8,507 doc — phủ đủ)
+#
+# So với chunks.jsonl hiện tại (524,422 chunk, cửa sổ 256 từ / chồng 64):
+#   - Cắt theo ranh giới "Điều N." thay vì cửa sổ từ cố định
+#   - Chunk nối tiếp được gắn tiền tố tổng hợp "[Điều N. - tiếp theo]"
+#   - Bỏ tiền tố đó ra thì 100% chunk là chuỗi con nguyên văn của văn bản gốc
+#     (kiểm trên mẫu 2.161 chunk) → không có dữ liệu ngoài, không phải augmentation
+#   - Ít chunk hơn nhưng dài hơn: trung bình 209 từ so với 167, hệ số lặp 1,250 so với 1,211
+#   - Đuôi chunk ngắn dày hơn: 1,40% dưới 30 từ (6.052 chunk), ngắn nhất 2 từ
+#
+# ⚠️ ĐỌC TRƯỚC KHI DÙNG KẾT QUẢ:
+#   1. Chỉ đo được BM25. Mọi file rerank hiện có tham chiếu chunk_id của chunks.jsonh
+#      CŨ; đổi kho chunk là chúng vô hiệu toàn bộ (cùng chunk_id, nội dung khác).
+#   2. Đo trên CẢ dev VÀ holdout, chạy p4_paired_test cho cả hai. Một con số dev đẹp
+#      là thứ vừa làm nhóm mất công cả tuần — xem gradient dev +0.0178 / holdout
+#      +0.0110 / public ~0.
+#   3. Chưa có mã nguồn sinh ra file này. BTC yêu cầu tái lập được; một .jsonl 560 MB
+#      không kèm chunker là không nộp được, bất kể nó tốt đến đâu.
+
+exp_id: v0.5_chunk_dieu
+seed: 42
+
+paths:
+  corpus_raw:   data/selected-contexts
+  train_raw:    data/train.json
+  questions:    data/public-official.json
+  corpus_clean: data/corpus_clean.jsonl
+  chunks:       data/chunks_dieu.jsonl   # ← DÒNG DUY NHẤT khác v0.3_bm25_best.yaml
+  holdout:      data/holdout.json
+  train_split:  data/train_split.json
+  out_dir:      outputs/v0.5_chunk_dieu
+
+chunking:
+  max_words: 180
+  overlap_words: 45
+  # false, không phải true: `chunker.py` CHƯA BAO GIỜ hiện thực cờ này (0/100.000 chunk
+  # mở đầu bằng tiêu đề). Ba config khác vẫn ghi `true` — đó là lời nói dối vô hại
+  # cho tới khi ai đó implement nó, rồi chunk đổi mà không ai biết vì sao.
+  prepend_name: false
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    pool: mean_top2         # đỉnh đường cong mean_topN, N=1..5 (0,7863/0,8116/0,8106/0,7961/0,7869)
+    tokenizer: syllable_bigram
+    tokenizer_opts:
+      fold_tone: true       # ← khôi phục bằng đo, xem đầu file
+      min_len: 1
+    min_df: 1
+    candidate_chunks: 2000  # ⚠️ mới chỉ kiểm tương đương với null trên tokenizer `regex`.
+                            #    syllable_bigram có nnz 96,1M so với 43,8M → phân bố điểm
+                            #    chunk khác hẳn. PHẢI kiểm lại trên error_pool 300 câu
+                            #    (docs/reproduce.md mục 4) trước khi tin +0,0439.
+    n_jobs: 4
+    batch_size: 64
