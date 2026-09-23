@@ -85,15 +85,43 @@ giá trị của nó nằm ở chỗ hợp nhất. Nhưng nếu R@50 của dense
 
 ---
 
-## Giai đoạn 4 — những thứ CHƯA có code
+## Giai đoạn 4 — bộ quyết định số lượng doc (local, ~2 phút, không cần GPU)
 
-Đến đây là hết phần chạy được. Ba file sau chưa viết, cần mình viết trước khi có lệnh để chạy:
+Tầng duy nhất ăn thẳng vào Precision — tức vào tie-break của bảng xếp hạng. Nguyên tắc:
+**fit trên `train_split`, báo cáo trên `dev`**, và một lệnh làm cả hai để không ai chọn
+tham số trên tập đo.
+
+```bash
+# 4a. Ranking của tập fit (chưa có sẵn — dev có rồi, train_split thì chưa)
+python -u scripts/run_pipeline.py --config configs/v0.3_bm25_best.yaml \
+    --questions data/train_split.json --out-dir outputs/v0.7_calib/train_split --eval
+
+# 4b. Fit θ trong ngân sách recall, rồi báo cáo lại trên dev với θ đã chốt
+python scripts/fit_calibration.py \
+    --ranking outputs/v0.7_calib/train_split/ranking_full.json \
+    --questions data/train_split.json \
+    --verify-ranking outputs/v0.3_bm25_best/ranking_full.json \
+    --verify-questions data/dev.json \
+    --max-recall-drop 0.003 --out outputs/v0.7_calib/calibration.json
+
+# 4c. Dán khối YAML script in ra vào config, rồi chạy lại pipeline
+python -u scripts/run_pipeline.py --config configs/v0.7_bm25_calib.yaml \
+    --questions data/dev.json --eval
+```
+
+`--max-recall-drop` là **ngân sách khai trước**, không phải số đọc ra sau khi nhìn kết quả.
+θ đơn điệu: tăng θ ⇒ recall tăng, precision giảm — script in vài dòng quanh θ\* để kiểm bằng mắt.
+
+⚠️ **θ gắn với đúng loại ranking đã fit.** Tín hiệu bất biến với co giãn và tịnh tiến điểm,
+nhưng *hình dạng* khe hở của BM25, của RRF và của cross-encoder thì khác nhau. Đổi tầng
+trước đó ⇒ fit lại, đừng bê θ cũ sang.
+
+## Giai đoạn 5 — những thứ CHƯA có code
 
 | Cần | Để làm gì |
 |---|---|
 | `src/retrieval/hybrid.py` | hợp nhất RRF BM25 + dense ở mức chunk (`type: hybrid` trong YAML) |
 | `scripts/tune_rrf.py` | chốt `w`/`k` trên `train_split` rồi mới đo dev — không chọn tham số trên tập đo |
-| `src/rerank/calibrate.py` + `scripts/fit_calibration.py` | quyết định trả 1..5 doc, đòn bẩy Precision |
 
 ---
 
