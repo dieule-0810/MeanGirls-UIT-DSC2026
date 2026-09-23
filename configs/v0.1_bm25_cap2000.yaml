@@ -25,7 +25,7 @@ paths:
   questions:    data/public-official.json
   corpus_clean: data/corpus_clean.jsonl
   chunks:       data/chunks.jsonl
-  holdout:      data/holdout.json
+  holdout:      data/holdout.jshttps://github.com/dieule-0810/MeanGirls-UIT-DSC2026/pull/24/conflict?name=configs%252Fv0.1_bm25_cap2000.yaml&ancestor_oid=5af1d3931f653a0cf8816233acefa59f3949b38b&base_oid=60b9967fbcca407aac45f97b887deefa3a82870c&head_oid=583a8c418d26d7174c6bcee53307a717e72129d1on
   train_split:  data/train_split.json
   out_dir:      outputs/v0.1_bm25_cap2000
 
@@ -35,7 +35,7 @@ data:
 chunking:
   max_words: 180
   overlap_words: 45
-  prepend_name: true
+  prepend_name: false       # chưa implement ở chunker; đã test không cần ở tầng rerank, chưa test ở BM25
 
 retrieval:
   top_k_retrieve: 100
