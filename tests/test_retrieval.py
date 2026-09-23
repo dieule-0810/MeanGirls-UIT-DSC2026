@@ -389,8 +389,41 @@ def test_build_retriever_tu_config():
 
 
 def test_build_retriever_ten_la():
+    # KHÔNG dùng "dense" làm tên lạ: từ 13/09 nó là retriever thật (src/retrieval/dense.py),
+    # nên test sẽ chết vì thiếu tham số chứ không vì tên lạ — đúng kiểu test xanh/đỏ sai lý do.
     with pytest.raises(KeyError, match="chưa đăng ký"):
-        build_retriever({"type": "dense"})
+        build_retriever({"type": "khong_co_retriever_nao_ten_nay"})
+
+
+def test_search_with_anchor_tra_chunk_dai_dien():
+    """INTERFACES §3b: mỗi doc phải kèm chunk đại diện để reranker có đoạn cụ thể mà chấm."""
+    r = BM25Retriever(pool="max", verbose=False)
+    r.index(CHUNKS)
+    res = r.search_with_anchor(["huỷ hoá đơn điện tử"], top_k=3)[0]
+    assert res, "không truy hồi được gì"
+    for doc_id, score, chunk_id in res:
+        assert isinstance(chunk_id, str)
+        assert chunk_id in r.chunk_ids
+        assert r.chunk_doc_ids[r.chunk_ids.index(chunk_id)] == doc_id, (
+            "chunk đại diện phải thuộc đúng văn bản đó"
+        )
+    docs_only = [(d, s) for d, s, _ in res]
+    assert docs_only == r.search(["huỷ hoá đơn điện tử"], top_k=3)[0], (
+        "search_with_anchor không được đổi thứ hạng so với search"
+    )
+
+
+def test_anchor_pha_hoa_bang_chunk_id_nho_nhat():
+    """Hai chunk cùng doc hoà điểm tuyệt đối → phải chọn chunk_id nhỏ nhất, không phụ thuộc
+    thứ tự duyệt hay candidate_chunks."""
+    same = [
+        {"chunk_id": "900::0007", "doc_id": "900", "position": 7, "text": "thuế thu nhập cá nhân"},
+        {"chunk_id": "900::0002", "doc_id": "900", "position": 2, "text": "thuế thu nhập cá nhân"},
+    ]
+    r = BM25Retriever(pool="max", verbose=False)
+    r.index(same)
+    _, _, cid = r.search_with_anchor(["thuế thu nhập cá nhân"], top_k=1)[0][0]
+    assert cid == "900::0002", f"phá hoà sai: {cid}"
 
 
 def test_build_retriever_thieu_type():
@@ -471,3 +504,46 @@ def test_thieu_ca_hai_ten_truong_thi_bao_loi_ro(tmp_path):
     p = _viet_jsonl(tmp_path / "chunks.jsonl", [{"chunk_id": "1::0", "noi_dung": "x"}])
     with pytest.raises(ValueError, match="INTERFACES"):
         load_chunks(p)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gắn tiêu đề văn bản (src/retrieval/enrich.py) — H6
+# ─────────────────────────────────────────────────────────────────────────────
+HEAD = ("BỘ Y TẾ ------- CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM Độc lập - Tự do - Hạnh phúc "
+        "--------------- Số: 15/2022/TT-BYT Hà Nội, ngày 1 tháng 3 năm 2022 "
+        "THÔNG TƯ QUY ĐỊNH VỀ KHÁM BỆNH TỪ XA Căn cứ Luật Khám bệnh...")
+
+
+def test_extract_title_lay_so_hieu_va_ten():
+    from src.retrieval.enrich import extract_title
+
+    t = extract_title(HEAD)
+    assert t.startswith("15/2022/TT-BYT"), t
+    assert "THÔNG TƯ QUY ĐỊNH VỀ KHÁM BỆNH TỪ XA" in t
+    assert "Căn cứ" not in t, "phải dừng trước phần căn cứ pháp lý"
+    assert "CỘNG HÒA" not in t, "quốc hiệu có ở MỌI văn bản — thêm vào mọi chunk là phá IDF"
+
+
+def test_extract_title_hau_to_chu_thuong():
+    """QĐ-TTg, NQ-HĐND: hậu tố chữ thường có thật, cắt mất là sai số hiệu."""
+    from src.retrieval.enrich import extract_title
+
+    assert extract_title("--- Số: 569/QĐ-TTg Hà Nội QUYẾT ĐỊNH BAN HÀNH CHIẾN LƯỢC Điều 1.").startswith(
+        "569/QĐ-TTg"
+    )
+
+
+def test_extract_title_khong_co_thi_tra_none():
+    from src.retrieval.enrich import extract_title
+
+    assert extract_title("Mật độ sinh vật gây hại (con/m2) = Tổng số điều tra") is None
+
+
+def test_prepend_titles_khong_sua_tai_cho():
+    from src.retrieval.enrich import prepend_titles
+
+    goc = [dict(c) for c in CHUNKS]
+    moi, st = prepend_titles(CHUNKS, {"740": "78/2021/TT-BTC THÔNG TƯ VỀ HOÁ ĐƠN"})
+    assert CHUNKS == goc, "hàm phải trả bản mới, không sửa chunk gốc — nếu không A/B vô nghĩa"
+    assert st["n_prepended"] == 2 and st["n_no_title"] == len(CHUNKS) - 2
+    assert moi[0]["text"].startswith("78/2021/TT-BTC THÔNG TƯ VỀ HOÁ ĐƠN. ")

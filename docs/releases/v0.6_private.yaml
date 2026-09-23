@@ -1,0 +1,222 @@
+# Kê khai bài nộp private test v0.6 — 23/09/2026.
+#
+# VÌ SAO CÓ FILE NÀY. `plan.md` §1 yêu cầu mọi submission thật sinh ra từ một Git tag. Lượt A có
+# tag; lượt C không có. Và cả hai đều KHÔNG có `run_meta.json`, vì chúng được ghép tay bằng chuỗi
+# script `p4_*`/`p5_*` chứ không qua `scripts/run_pipeline.py`. `outputs/` lại nằm trong
+# `.gitignore` (dòng `outputs/*`), nên không có chỗ nào trong repo ghi lại rằng hai file zip đang
+# cầm trên tay được sinh ra từ cái gì. File này là chỗ đó.
+#
+# Kiểm bằng:  python scripts/verify_release.py --manifest docs/releases/v0.6_private.yaml
+# Ghi lại:    python scripts/verify_release.py --manifest ... --record   (sau khi chạy lại)
+#
+# ⚠️ Kê khai KHÔNG PHẢI tái lập. Nó chứng minh "các file trên đĩa vẫn đúng là các file đã nộp"
+# và "lệnh nào sinh ra chúng", chứ không tự chạy lại chuỗi 80 phút GPU. Muốn tái lập thật thì
+# chạy lại theo `commands` rồi so `sha256` — `--record` có để ghi kết quả lần chạy lại đó.
+schema: 1
+release: v0.6_private
+ngay: 2026-09-23
+nguoi_chay: P4
+tap_thi: private test (3 lượt/ngày)
+
+# ── Đầu vào dùng chung cho cả hai lượt ────────────────────────────────────────
+# `data/` không bao giờ được commit, nên sha256 ở đây là thứ duy nhất ràng bài nộp vào đúng
+# kho chunk đã sinh ra nó. `docs/reproduce.md` §2 lo đúng nỗi lo này bằng vocab/nnz/avgdl;
+# sha256 chặt hơn và rẻ hơn.
+inputs:
+  data/chunks.jsonl:
+    sha256: 34b426dd01cc202754d7d75ee1905c4a0e8e68476f16f674d376889b56bdf42a
+    bytes: 576070530
+    ghi_chu: 524.422 chunk / 8.507 doc — chunker mặc định (--chunk-size 256 --overlap 64)
+  data/corpus_clean.jsonl:
+    sha256: 365306b58c0c14e87adce81a2b383a2245002faacb41b95928ddff4db0d73945
+    bytes: 445101520
+  data/private-official.json:
+    sha256: 9da4e0cb84204fed924251c35744c93879556e67a440332015ea3b62f3c355bc
+    bytes: 388922
+    ghi_chu: 2.080 câu, không nhãn
+  data/train.json:
+    sha256: c39cde9e74977e350f1456e7d487aafe67d2bcbaa4fa26fcabd557fe635635b7
+    bytes: 1526741
+    ghi_chu: 7.000 câu — bộ nhớ kNN của lượt A (KHÔNG phải train_split 4.689)
+  configs/v0.3_bm25_best.yaml:
+    sha256: 763c772945d08fc33d363e2fe7ec8bc46e6d7a3cce78a56e6e8c92a3cc2270c7
+    bytes: 1012
+  configs/models.yaml:
+    sha256: 789b291b28c4afe1e56776de0a48275d4a9ea6d6ceed7a840636b764364b39a9
+    bytes: 5399
+
+# ── Hai bước đầu dùng chung cho cả A lẫn C ───────────────────────────────────
+shared_steps:
+  - id: bm25_top50
+    cmd: >-
+      py -m scripts.p4_build_ranking --config configs/v0.3_bm25_best.yaml
+      --questions data/private-official.json
+      --out outputs/v0.6_private/bm25_top50.json --top-k 50
+    out: outputs/v0.6_private/bm25_top50.json
+    chi_phi: ~7 phút CPU
+  - id: bge_top20
+    cmd: >-
+      py -m scripts.p4_rerank --model bge-m3
+      --ranking outputs/v0.6_private/bm25_top50.json
+      --questions data/private-official.json --rerank-top 20 --chunks 1
+      --prepend-name --batch-size 8 --out outputs/v0.6_private/bge_top20.json
+    out: outputs/v0.6_private/bge_top20.json
+    chi_phi: ~75 phút GPU (RTX 3050 6 GB, fp16)
+    ghi_chu: >-
+      BAAI/bge-reranker-v2-m3, revision 953dc6f6f85a, 567.755.777 tham số — dưới trần 4 tỷ
+      của BTC. Kiểm toán: docs/param_audit.md.
+
+runs:
+  # ───────────────────────────────────────────────────────────────────────────
+  A:
+    mo_ta: BM25 + bge-reranker + kNN câu-hỏi-trên-train, hợp nhất RRF ba nguồn
+    tag: submission/2026-09-23-knn-rrf
+    commit: bdfedf86a03acf9b6ee7aa84a9a266a28304b64e
+    leaderboard:
+      recall: 0.881807453
+      precision: 0.188366212
+      nguon: message của git tag
+    holdout_du_bao: {truoc: 0.8559, sau: 0.8917}
+    steps:
+      - id: knn_rrf
+        cmd: >-
+          py -m scripts.p5_knn_fuse --questions data/private-official.json
+          --memory data/train.json --bm25 outputs/v0.6_private/bm25_top50.json
+          --rerank outputs/v0.6_private/bge_top20.json
+          --out outputs/v0.6_private/knn_rrf.json
+        out: outputs/v0.6_private/knn_rrf.json
+        sieu_tham_so: wb=0.6 wr=0.4 wk=0.10 rrf_k=60 neighbors=50 knn_depth=10 bm25_depth=50
+        ghi_chu: >-
+          Siêu tham số chọn trên dev, holdout chạm một lần. Mặc định trong p5_knn_fuse.py,
+          không truyền cờ nào — nên bản committed của file đó LÀ đặc tả của bước này.
+      - id: preds_A
+        cmd: >-
+          py -m scripts.p4_to_preds --ranking outputs/v0.6_private/knn_rrf.json
+          --questions data/private-official.json --out outputs/v0.6_private/preds_A.json
+        out: outputs/v0.6_private/preds_A.json
+      - id: submission_A
+        cmd: >-
+          py -m src.make_submission --preds outputs/v0.6_private/preds_A.json
+          --questions data/private-official.json --corpus data/corpus_clean.jsonl
+          --out outputs/v0.6_private/A/submission.zip
+        out: outputs/v0.6_private/A/submission.zip
+    artifacts:
+      outputs/v0.6_private/knn_rrf.json:
+        sha256: c07d663204a05c78c68854ea1822ab9e2ce8e528d7f3e4c01f9a6670a75eb16e
+        bytes: 4434600
+      outputs/v0.6_private/preds_A.json:
+        sha256: a01a52f8a8e0b2d59eb4f0389cd1a6796934b793716ad9fc6960486374ba09f7
+        bytes: 223872
+      outputs/v0.6_private/A/submission.zip:
+        sha256: 1024ed4174db90e3c9667b9079fc73b9f50768738219e5c45b5de20830c9c2ce
+        bytes: 44733
+        # zip mang dấu thời gian nên hash của nó KHÔNG tái lập được giữa hai lần chạy.
+        # Hash của file bên trong thì có — đó mới là thứ BTC chấm.
+        inner:
+          submission.json:
+            sha256: d608a997580df6149059d5deb480d2670e9acfc6fc7ef813aaf53081f1cee65c
+            bytes: 200689
+
+  # ───────────────────────────────────────────────────────────────────────────
+  C:
+    mo_ta: BM25 + bge-reranker, hợp nhất RRF hai nguồn w=0,6 (không kNN)
+    tag: null          # ⚠️ CHƯA CÓ TAG — xem `van_de` ở cuối file
+    commit: null       # không xác định được từ repo; xem `bang_chung` bên dưới
+    leaderboard:
+      recall: null     # ⚠️ chưa điền; nếu đã nộp thì lấy từ CodaLab và điền vào đây
+      precision: null
+    steps:
+      - id: rrf_w06
+        cmd: >-
+          py -m scripts.p4_fuse --bm25 outputs/v0.6_private/bm25_top50.json
+          --rerank outputs/v0.6_private/bge_top20.json
+          --questions data/private-official.json --top-k 20 --w 0.6 --rrf-k 60
+          --out outputs/v0.6_private/rrf_w06.json
+        out: outputs/v0.6_private/rrf_w06.json
+        ghi_chu: >-
+          `--w 0.6` BẮT BUỘC. Bỏ cờ này thì p4_fuse quét w trên chính tập private — tune trên
+          tập thi. Bản p4_fuse.py trên nhánh feat/pipeline-e2e từng MẤT cờ này (đã khôi phục
+          từ main); nếu lệnh trên báo `unrecognized arguments: --w` thì bạn đang ở bản cụt.
+      - id: preds_C
+        cmd: >-
+          py -m scripts.p4_to_preds --ranking outputs/v0.6_private/rrf_w06.json
+          --questions data/private-official.json --out outputs/v0.6_private/preds_C.json
+        out: outputs/v0.6_private/preds_C.json
+      - id: submission_C
+        cmd: >-
+          py -m src.make_submission --preds outputs/v0.6_private/preds_C.json
+          --questions data/private-official.json --corpus data/corpus_clean.jsonl
+          --out outputs/v0.6_private/C/submission.zip
+        out: outputs/v0.6_private/C/submission.zip
+    artifacts:
+      outputs/v0.6_private/rrf_w06.json:
+        sha256: 0543f0301939fcae97c105780b566f9cf02401c0732d390bde30f2419a8c0494
+        bytes: 1574071
+      outputs/v0.6_private/preds_C.json:
+        sha256: 5c154d6084b4e9f99c1f795e0ffdde1f2c11109ebf7114196ecf19f3d71c18d7
+        bytes: 223941
+      outputs/v0.6_private/C/submission.zip:
+        sha256: 8bc4e3a17f5b6002df14f82ec45cb8cc95a91f01d3e3ca352abaf1e2870ba039
+        bytes: 45387
+        inner:
+          submission.json:
+            sha256: 06f5235413947ee747a26e137321cc05532e91fa1b72b5f0bd0a98eb120728f1
+            bytes: 200746
+
+# ── Kiểm cấu trúc (verify_release.py chạy lại được) ──────────────────────────
+expect:
+  n_questions: 2080
+  docs_per_question: 5      # đúng 5 cho MỌI câu ở cả hai lượt, đã đo
+  preds_depth: 10           # p4_to_preds --depth mặc định; make_submission dedupe RỒI cắt 5
+
+# ── Bằng chứng về phiên bản mã nguồn đã chạy ─────────────────────────────────
+# Hai lượt này chạy bằng các script lúc đó CHƯA commit (p5_knn_fuse.py commit lúc 10:10 ngày
+# 23/09, mà knn_rrf.json sinh lúc 01:14 cùng ngày). Nên câu hỏi "bản đã chạy có đúng bản đang
+# nằm trên main không" không trả lời được bằng git. Bằng chứng gián tiếp, đo được, ghi ở đây:
+bang_chung:
+  cach_do: >-
+    Bytecode trong scripts/__pycache__/*.cpython-312.pyc ghi kèm KÍCH THƯỚC file nguồn tại
+    thời điểm biên dịch (PEP 552, timestamp-based, flags=0). So kích thước đó với
+    `git cat-file -s main:<file>`.
+  ket_qua:
+    p5_knn_fuse.py:      {pyc_bien_dich: "2026-09-23 01:13:57", nguon_size_pyc: 7326, size_tren_main: 7326, khop: true}
+    p4_to_preds.py:      {pyc_bien_dich: "2026-09-16 23:15:20", nguon_size_pyc: 3015, size_tren_main: 3015, khop: true}
+    p4_fuse.py:          {pyc_bien_dich: "2026-09-16 17:11:45", nguon_size_pyc: 7980, size_tren_main: 7980, khop: true}
+    p4_check_submission.py: {pyc_bien_dich: "2026-09-16 23:23:44", nguon_size_pyc: 7054, size_tren_main: 7054, khop: true}
+  gia_tri_cua_bang_chung: >-
+    Khớp kích thước KHÔNG PHẢI khớp nội dung — hai file khác nhau vẫn có thể cùng số byte.
+    Nhưng bytecode của p5_knn_fuse được biên dịch lúc 01:13:57, một phút trước khi
+    knn_rrf.json ra đời lúc 01:14, và kích thước nguồn lúc đó bằng đúng kích thước bản trên
+    main. Đọc nó là bằng chứng ủng hộ mạnh, không phải là chứng minh.
+  __pycache__: >-
+    Thư mục này nằm trong .gitignore và sẽ biến mất khi ai đó dọn máy. Bằng chứng ở trên được
+    chép vào đây vì nó KHÔNG tái tạo được sau đó.
+
+# ── Những chỗ còn hở, không vá lặng lẽ ───────────────────────────────────────
+van_de:
+  - id: C-khong-tag
+    muc: cao
+    mo_ta: >-
+      Lượt C chưa có git tag. plan.md §1 đòi mọi submission thật sinh từ một tag. Cách vá:
+      `git tag -a submission/2026-09-23-rrf-w06 bdfedf8 -m "private lượt C · recall <x> · precision <y>"`
+      — dùng CÙNG commit với lượt A nếu xác nhận C chạy trên cùng trạng thái mã nguồn, và
+      điền điểm LB thật vào message thay cho <x>/<y>.
+  - id: C-khong-diem-LB
+    muc: trung binh
+    mo_ta: >-
+      `leaderboard` của C để null. Nếu C đã nộp thì lấy điểm từ CodaLab điền vào đây VÀ vào
+      experiments.csv (cột recall_lb/precision_lb). Nếu C chưa nộp thì ghi rõ là chưa nộp —
+      một bài nộp không điểm và một bài chưa nộp là hai chuyện khác nhau.
+  - id: khong-co-run-meta
+    muc: trung binh
+    mo_ta: >-
+      Cả hai lượt không đi qua scripts/run_pipeline.py nên không có run_meta.json (exp_id,
+      commit, stats retriever). Lượt sau nên chạy qua runner; file kê khai này là bản vá cho
+      hai lượt ĐÃ chạy, không phải cách làm lâu dài.
+  - id: nhanh-feat-pipeline-e2e-thut-lui
+    muc: cao
+    mo_ta: >-
+      Chuỗi script sinh ra hai bài nộp này nằm trên `main`, không có trên `feat/pipeline-e2e`,
+      và bản p4_fuse.py ở đó còn mất cờ `--w`. Đã khôi phục p4_fuse.py / p4_to_preds.py /
+      p4_check_submission.py / p5_knn_fuse.py / docs/reproduce.md / RUN_PRIVATE_KNN.md từ main
+      sang nhánh này. Trước khi nộp lượt tiếp theo, kiểm bạn đang đứng trên nhánh nào.

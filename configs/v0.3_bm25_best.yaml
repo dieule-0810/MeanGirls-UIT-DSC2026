@@ -31,6 +31,16 @@ exp_id: v0.3_bm25_best
 seed: 42
 
 paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — không chạm
+  questions:    data/public-official.json
+  cache_dir:    data/cache
+  out_dir:      outputs/v0.3_bm25_best
+
+pipeline:
+  retriever: bm25
   corpus_raw:   data/selected-contexts
   train_raw:    data/train.json
   questions:    data/public-official.json
@@ -55,15 +65,13 @@ retrieval:
   bm25:
     k1: 1.5
     b: 0.75
-    pool: mean_top2         # đỉnh đường cong mean_topN, N=1..5 (0,7863/0,8116/0,8106/0,7961/0,7869)
     tokenizer: syllable_bigram
     tokenizer_opts:
-      fold_tone: true       # ← khôi phục bằng đo, xem đầu file
+      fold_tone: true
       min_len: 1
+    pool: mean_top2
+    pool_tau: 1.0
     min_df: 1
-    candidate_chunks: 2000  # ⚠️ mới chỉ kiểm tương đương với null trên tokenizer `regex`.
-                            #    syllable_bigram có nnz 96,1M so với 43,8M → phân bố điểm
-                            #    chunk khác hẳn. PHẢI kiểm lại trên error_pool 300 câu
-                            #    (docs/reproduce.md mục 4) trước khi tin +0,0439.
-    n_jobs: 4
+    candidate_chunks: 2000   # ⚠️ không trung tính với mean_topN — docs/candidate_cap_check.md
+    n_jobs: 8
     batch_size: 64

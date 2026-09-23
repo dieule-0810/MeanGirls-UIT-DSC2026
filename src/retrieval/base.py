@@ -235,6 +235,37 @@ class BaseRetriever(ABC):
         check_contract(results, len(queries), top_k)
         return results
 
+    def search_with_anchor(
+        self, queries: list[str], top_k: int
+    ) -> list[list[tuple[str, float, str]]]:
+        """
+        Như `search()` nhưng kèm **chunk đại diện** của mỗi doc: `(doc_id, score, chunk_id)`.
+
+        INTERFACES §3b đưa điều khoản này vào hợp đồng vì reranker cần một đoạn văn bản cụ thể
+        để chấm — `search()` gộp lên doc rồi vứt mất chunk nào đã thắng.
+
+        Quy ước phá hoà (bắt buộc tường minh): điểm chunk cao nhất; hoà thì `chunk_id` NHỎ NHẤT.
+        17/300 câu error_pool có ≥2 chunk cùng văn bản hoà điểm tuyệt đối — không phá hoà thì
+        việc chọn đoạn nào phụ thuộc `candidate_chunks`, tức kết quả đổi theo một tham số tốc độ.
+        """
+        if top_k < 1:
+            raise ValueError("top_k phải >= 1")
+        n_cand = max(self.candidate_chunks, top_k)
+        out: list[list[tuple[str, float, str]]] = []
+        for idx, sc in self.candidates(list(queries), n_cand):
+            ranked = self.pool_candidates(idx, sc, top_k)
+            # Khoá sắp xếp (-điểm, chunk_id): nhỏ hơn là tốt hơn ⇒ điểm cao nhất trước,
+            # hoà thì chunk_id nhỏ nhất. Một biểu thức, không nhánh if lồng.
+            anchor: dict[str, tuple[float, str]] = {}
+            for i, s in zip(idx, sc):
+                d = self.chunk_doc_ids[int(i)]
+                key = (-float(s), self.chunk_ids[int(i)])
+                if d not in anchor or key < anchor[d]:
+                    anchor[d] = key
+            out.append([(d, s, anchor[d][1]) for d, s in ranked])
+        check_contract([[(d, s) for d, s, _ in r] for r in out], len(queries), top_k)
+        return out
+
     def search_chunks(self, queries: list[str], top_k: int) -> list[list[tuple[str, float]]]:
         """Như `search()` nhưng trả `chunk_id`, chưa gộp — cho P4 rerank và RRF mức chunk."""
         out = []
@@ -275,6 +306,55 @@ def register_retriever(name: str):
 
 def available_retrievers() -> list[str]:
     return sorted(_REGISTRY)
+
+
+def infer_retriever_kind(cfg: dict) -> str:
+    """Config chỉ có một khối retriever thì không bắt người dùng khai lại tên nó."""
+    kinds = [k for k in cfg.get("retrieval", {}) if isinstance(cfg["retrieval"][k], dict)]
+    if len(kinds) != 1:
+        raise ValueError(
+            f"`retrieval` có {len(kinds)} khối ({kinds}). Khai rõ `pipeline.retriever: <tên>` "
+            f"để không ai phải đoán bản chạy dùng cái nào."
+        )
+    return kinds[0]
+
+
+def retriever_spec(cfg: dict, kind: str | None = None, demo: bool = False) -> dict:
+    """
+    `cfg` (YAML đã đọc) → spec truyền thẳng vào `build_retriever()`.
+
+    Làm ba việc mà mọi script đều phải làm và trước đây mỗi script tự làm một kiểu:
+      1. chọn khối retriever (`pipeline.retriever`, hoặc suy ra nếu chỉ có một khối);
+      2. nối `paths.embeddings` / `paths.cache_dir` vào nguồn cần chúng — kể cả nguồn NẰM
+         TRONG `hybrid.sources`, nơi tên đường dẫn không thể tự tìm đến;
+      3. ở `--demo` thì gỡ hết cache và embedding: corpus giả vài trăm chunk mà nạp ma trận
+         embedding của 524.422 chunk thật là lỗi "vân tay không khớp", hoặc tệ hơn, không lỗi.
+
+    Đệ quy vào `sources` nên hybrid lồng hybrid vẫn đúng.
+    """
+    kind = kind or cfg.get("pipeline", {}).get("retriever") or infer_retriever_kind(cfg)
+    return _resolve_spec(kind, cfg["retrieval"][kind], cfg.get("paths", {}) or {}, demo)
+
+
+def _resolve_spec(kind: str, raw: dict, paths: dict, demo: bool) -> dict:
+    spec = dict(raw)
+    spec["type"] = kind
+    if "sources" in spec:
+        spec["sources"] = {
+            name: _resolve_spec(sub.get("type", name), sub, paths, demo)
+            for name, sub in spec["sources"].items()
+        }
+        # `weight` là tham số của hybrid, không phải của retriever con — `_resolve_spec` giữ
+        # nguyên nó trong spec con và `HybridRetriever.__init__` sẽ lấy ra.
+        return spec
+    if demo:
+        spec.pop("cache_dir", None)
+        spec.pop("embeddings_path", None)
+    elif kind == "dense" and paths.get("embeddings"):
+        spec.setdefault("embeddings_path", paths["embeddings"])
+    elif kind == "bm25" and paths.get("cache_dir"):
+        spec.setdefault("cache_dir", paths["cache_dir"])
+    return spec
 
 
 def build_retriever(spec: dict) -> BaseRetriever:
