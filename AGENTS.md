@@ -65,12 +65,31 @@ python -m src.retrieval.bm25 --config configs/v0.1_bm25.yaml \
     --questions data/holdout.json --out outputs/tmp/preds.json
 python scripts/bench_retrieval.py --config configs/v0.2_bm25_tokenizer.yaml   # lưới tokenizer × pooling
 python scripts/bench_retrieval.py --demo                                      # chạy trên corpus giả, không cần data/
+
+# P3 — hợp nhất RRF nhiều nguồn (hybrid là một retriever, KHÔNG phải một tầng của runner)
+python scripts/run_pipeline.py --config configs/v0.8_hybrid_demo.yaml --demo --eval   # không cần torch
+python scripts/tune_rrf.py --config configs/v0.8_hybrid_rrf.yaml --limit-fit 1500     # chốt w/k trên train_split
+
+# Tái lập bài nộp
+python scripts/verify_release.py --manifest docs/releases/v0.6_private.yaml            # kiểm hash + cấu trúc
+python scripts/verify_release.py --manifest docs/releases/v0.6_private.yaml --commands # in chuỗi lệnh đã chạy
 ```
 
 ## 5. Trạng thái hiện tại (cập nhật khi đổi)
 
 - Có đủ: `src/data/` (P2), `evaluate.py` / `make_submission.py` / `verify_env.py` (P1),
-  khung `BaseRetriever` + BM25 + tokenizer tiếng Việt (P3), EDA 12 mục, test mã chấm.
+  khung `BaseRetriever` + BM25 + dense + hybrid (RRF) + tokenizer tiếng Việt (P3),
+  runner `scripts/run_pipeline.py`, EDA 12 mục, test mã chấm.
+- **Hợp nhất nhiều nguồn là `src/retrieval/hybrid.py`, một `type: hybrid` trong YAML — KHÔNG phải
+  một tầng của runner** (INTERFACES §3: gộp là việc nội bộ của retriever). Hai mức hợp nhất:
+  `fuse_level: chunk` (RRF trên thứ hạng chunk rồi mới gộp lên doc) và `fuse_level: doc` (mỗi
+  nguồn tự gộp rồi RRF trên thứ hạng doc — đây là cách `scripts/p4_fuse.py` làm).
+  `scripts/tune_rrf.py` chốt `w`/`rrf_k` trên `train_split` rồi đo **một lần** trên `dev`, và in
+  ra **độ lạc quan** của việc quét trên chính tập đo. Đừng quét w trên tập báo cáo.
+- Mỗi bài nộp thật có một bản kê khai trong `docs/releases/*.yaml` (sha256 của đầu vào + artefact
+  + file trong zip, chuỗi lệnh, tag, điểm LB). `outputs/` và `data/` đều bị `.gitignore` chặn nên
+  đó là chỗ DUY NHẤT trong repo ràng file zip vào thứ đã sinh ra nó. Kiểm bằng
+  `scripts/verify_release.py`; lượt nộp mới thì thêm một khối `runs:` rồi chạy `--record`.
 - `data/` **không bao giờ commit** (dữ liệu BTC, `.gitignore` đã chặn `data/`, `*.json`, `*.jsonl`, checkpoint).
   Dữ liệu nằm trên Drive team → `scripts/fetch_data.py` (xem `configs/data_sources.yaml`).
 
@@ -84,8 +103,13 @@ python scripts/bench_retrieval.py --demo                                      # 
 2. **`scripts/run_v0.1.py` không chạy được nữa**: nó gọi `python -m src.data.parse_corpus --config …`
    nhưng module của P2 không nhận `--config`, và gọi `src.data.split_holdout` trong khi file thật tên
    `split_data.py`. Chạy từng bước bằng tay cho tới khi P1/P2 sửa.
-3. **Thiếu `src/data/__init__.py`** — hiện vẫn import được nhờ namespace package, nhưng đó là may mắn
-   chứ không phải thiết kế.
+3. ~~Thiếu `src/data/__init__.py`~~ — **đã sửa** ở `2fa1dd6`, file tồn tại, `src.data` là package thật.
+
+4. **Nhánh `feat/pipeline-e2e` thiếu phần tái lập bài nộp so với `main`.** `p5_knn_fuse.py`,
+   `p4_to_preds.py`, `p4_check_submission.py`, `docs/reproduce.md`, `RUN_PRIVATE_KNN.md` chỉ có
+   trên `main`; và `scripts/p4_fuse.py` ở nhánh này từng **mất cờ `--w`** — bỏ cờ đó thì script
+   quay lại quét `w` trên chính tập private, tức tune trên tập thi. Đã khôi phục cả 6 file từ
+   `main` sang nhánh này; nếu bạn thấy `unrecognized arguments: --w` thì đang đứng ở bản cụt.
 
 ## 6. Quy ước code
 
