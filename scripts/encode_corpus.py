@@ -72,8 +72,6 @@ def main() -> int:
         raise SystemExit("❌ --limit và --shard loại trừ nhau: một cái cắt đầu, một cái chia đều.")
     if args.limit:
         out_path = out_path.with_name(f"{out_path.stem}_limit{args.limit}.npy")
-    meta_path = out_path.with_suffix(".meta.json")
-    prog_path = out_path.with_suffix(".progress.json")
 
     chunks = load_chunks(REPO / cfg["paths"]["chunks"])
     # Vân tay của TOÀN BỘ corpus, tính TRƯỚC khi cắt mảnh: mọi mảnh phải mang cùng một vân tay,
@@ -95,6 +93,15 @@ def main() -> int:
         end = start + base + (1 if k < rem else 0)
         out_path = out_path.with_name(f"{out_path.stem}.shard{k}of{n_shards}.npy")
         chunks = chunks[start:end]
+
+    # Đặt SAU khi out_path đã mang hậu tố mảnh. Trước đây hai dòng này nằm trên khối `if
+    # args.shard` nên mọi mảnh đều ghi ra `embeddings.meta.json` và `embeddings.progress.json`
+    # — không có `.shardKofN.`. Hậu quả: `merge_embeddings.py` tìm `*.shard*.meta.json` nên
+    # không thấy gì và từ chối ghép, còn 8 mảnh chạy trên 8 phiên thì cùng đòi một tên file,
+    # gom vào một thư mục là đè nhau. Sổ tiến độ cũng vậy: `--resume` của mảnh 3 đọc nhầm sổ
+    # của mảnh 1 nếu hai mảnh chạy chung một thư mục làm việc.
+    meta_path = out_path.with_suffix(".meta.json")
+    prog_path = out_path.with_suffix(".progress.json")
     elif args.limit:
         chunks = chunks[: args.limit]
 
