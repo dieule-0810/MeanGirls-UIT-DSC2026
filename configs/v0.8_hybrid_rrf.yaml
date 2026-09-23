@@ -34,30 +34,27 @@ paths:
 pipeline:
   retriever: hybrid
 
+  rerank:
+    model: vi-reranker
+    mode: rrf
+    depth: 10
+    rrf_k: 60
+    weight_retriever: 0.9
+    device: mps
+    max_length: 512
+    batch_size: 16
+
 retrieval:
   top_k_retrieve: 100
   top_k_submit: 5
   ranking_full_k: 50
 
   hybrid:
-    # chunk → RRF trên thứ hạng chunk rồi mới gộp lên doc (pool ở ngay dưới có tác dụng).
-    # doc   → mỗi nguồn tự gộp bằng pool CỦA NÓ rồi RRF trên thứ hạng doc (= cách p4_fuse làm;
-    #         khi đó `pool` của hybrid bắt buộc là max, vì nó đã thành phép đồng nhất).
-    fuse_level: chunk
-    rrf_k: 60
-
-    # null = RRF cổ điển: vắng mặt ở một nguồn thì nguồn đó không đóng góp gì.
-    # Đặt số (p4_fuse dùng top_k+1000, p5_knn_fuse dùng 1000000) để tái lập ĐÚNG hai prototype
-    # đó — xem ghi chú về dấu trong src/retrieval/hybrid.py::rrf_from_ranks.
-    absent_rank: null
-
-    # Chỉ có tác dụng khi fuse_level=doc: mỗi nguồn xếp sâu bao nhiêu doc trước khi hợp nhất.
+    fuse_level: doc
+    rrf_k: 20
     doc_depth: 200
-
-    # Số chunk mỗi nguồn trả về để hợp nhất. null = lấy theo candidate_chunks bên dưới.
     source_depth: null
-
-    pool: mean_top2      # gộp chunk→doc SAU khi hợp nhất (chỉ dùng ở fuse_level=chunk)
+    pool: max
     pool_tau: 1.0
     candidate_chunks: 2000
 
@@ -67,7 +64,7 @@ retrieval:
       # đường lui nếu dense không đóng góp gì.
       bm25:
         type: bm25
-        weight: 0.6
+        weight: 0.4
         k1: 1.5
         b: 0.75
         tokenizer: syllable_bigram
@@ -83,7 +80,7 @@ retrieval:
 
       dense:
         type: dense
-        weight: 0.4
+        weight: 0.6
         repo: AITeamVN/Vietnamese_Embedding_v2
         revision: 18b44161e041bf1d3a333ab5144b5b7b93f914d2
         pooling: cls

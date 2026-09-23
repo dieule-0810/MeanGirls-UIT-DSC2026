@@ -102,7 +102,7 @@ def main() -> int:
     # của mảnh 1 nếu hai mảnh chạy chung một thư mục làm việc.
     meta_path = out_path.with_suffix(".meta.json")
     prog_path = out_path.with_suffix(".progress.json")
-    elif args.limit:
+    if args.limit:
         chunks = chunks[: args.limit]
 
     texts = [c["text"] for c in chunks]
