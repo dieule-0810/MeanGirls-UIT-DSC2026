@@ -48,12 +48,20 @@ Kỳ vọng: `corpus_clean.jsonl` **8.507** dòng · `chunks.jsonl` **524.422** 
 `split_data` sinh `holdout.json` 1.000 · `dev.json` 1.000 · `error_pool.json` 300 ·
 `train_split.json` 4.689 (7.000 − 11 câu Vùng Chết).
 
-> ⚠️ **TODO-P2 (1) — tham số chunking.** Lệnh trên dùng CLI default `--chunk-size 256
-> --overlap 64`. Mọi file trong `configs/` ghi `max_words: 180 / overlap_words: 45`, và
-> `chunker.py` **không nhận `--config`** nên các giá trị đó chưa bao giờ có tác dụng.
-> Đo trên 50.000 chunk đầu của `data/chunks.jsonl`: mean 163,7 từ · median 187 · **max 261**
-> — khớp 256, không khớp 180. Kết luận tạm: chunk hiện có dựng bằng default.
-> P2 xác nhận rồi thì sửa cả ba config cho khớp thực tế, hoặc cho `chunker.py` đọc config.
+> ✅ **Đã xác minh (17/09/2026) — tham số chunking.** Chạy lại `src/data/chunker.py`
+> (bản trong repo, tham số mặc định `--chunk-size 256 --overlap 64`) trên
+> `corpus_clean.jsonl` cho **524.422 / 524.422 dòng trùng khít nội dung** với
+> `data/chunks.jsonl` mà mọi thí nghiệm và bài nộp đã dùng. Lệnh ở trên là lệnh đúng.
+>
+> Các file `configs/*.yaml` ghi `max_words: 180 / overlap_words: 45` — hai giá trị đó
+> **chưa bao giờ có tác dụng**, vì `chunker.py` không nhận `--config`. Đừng đọc
+> chúng như mô tả của kho chunk.
+>
+> ⚠️ **KHÔNG thay `src/data/chunker.py` bằng chunker theo Điều** (`chunker_dieu.py`).
+> Bản đó sinh kho chunk khác (432.142 chunk). Nếu nó chiếm tên `chunker.py` thì lệnh ở
+> trên vẫn chạy êm nhưng ra kho chunk khác với kho đã sinh ra bài nộp — tái lập hỏng
+> mà không có lỗi nào báo. Chunk theo Điều đã được đo và không cải thiện Recall@5
+> (dev −0,0008, holdout +0,0027, cả hai không có ý nghĩa thống kê).
 >
 > ⚠️ **TODO-P2 (2) — `run_v0.1.py` không chạy được.** Nó gọi `src.data.split_holdout`
 > (module thật tên `split_data`) và gọi `src.data.chunker --config <cfg>` (chunker không
