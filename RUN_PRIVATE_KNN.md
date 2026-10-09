@@ -1,6 +1,10 @@
 # Chạy private với kNN câu hỏi (v0.6) — 23/09
 
-Chép `scripts/p5_knn_fuse.py` vào repo. Không cần cài thêm gì, không cần GPU cho bước kNN (~1 phút).
+> ⚠️ Tài liệu lịch sử của bài nộp v0.6. Chuỗi này chạy trên kho chunk `loose` (524.422 chunk):
+> dựng lại bằng `python -m src.data.chunker` trước khi chạy — `data/chunks.jsonl` hiện là kho `strict`
+> của v0.8. Kê khai đầy đủ: `docs/releases/v0.6_private.yaml`.
+
+Không cần cài thêm gì, không cần GPU cho bước kNN (~1 phút).
 
 ## Bước 0 — dựng hai file đầu vào (nếu chưa có từ lượt nộp trước)
 
@@ -28,7 +32,10 @@ py -m scripts.p4_check_submission --zip outputs/v0.6_private/A/submission.zip --
 
 Giống lượt A, bỏ `--rerank`, đổi tên file ra thành `knn_bm25.json` / `preds_B.json` / `B/submission.zip`.
 Nếu bge chưa chạy xong thì **nộp B trước** để có mốc.
-Q=data/private-official.json
+
+## Lượt C — BM25 + bge, RRF w=0,6 (không kNN)
+
+```bash
 py -m scripts.p4_fuse --bm25 outputs/v0.6_private/bm25_top50.json \
     --rerank outputs/v0.6_private/bge_top20.json --questions data/private-official.json \
     --top-k 20 --w 0.6 --rrf-k 60 --out outputs/v0.6_private/rrf_w06.json
@@ -36,6 +43,7 @@ py -m scripts.p4_to_preds --ranking outputs/v0.6_private/rrf_w06.json --question
 py -m src.make_submission --preds outputs/v0.6_private/preds_C.json --questions data/private-official.json \
     --corpus data/corpus_clean.jsonl --out outputs/v0.6_private/C/submission.zip
 py -m scripts.p4_check_submission --zip outputs/v0.6_private/C/submission.zip --questions data/private-official.json --corpus data/corpus_clean.jsonl
+```
 
 ## Kiểm nhanh trước khi nộp
 

@@ -17,8 +17,13 @@
 
 ## Bi-encoder / embedding
 
+> **Model duy nhất của pipeline nộp bài v0.8** là `AITeamVN/Vietnamese_Embedding_v2`: đếm trực tiếp
+> ngày 09/10/2026 bằng `AutoModel` (kể cả pooler không dùng) = **567.754.752** tham số, 46,6% ở lớp
+> embedding. Thêm vào danh sách 13/09/2026, BTC đã duyệt.
+
 | Model | Tham số | Nền kiến trúc | dtype | revision | license |
 |---|---:|---|---|---|---|
+| `AITeamVN/Vietnamese_Embedding_v2` | **567.75M** ✅ | XLM-R large, 8192 ctx | _(chưa kiểm)_ | `18b44161e041bf1d3a333ab5144b5b7b93f914d2` | apache-2.0 |
 | `BAAI/bge-m3` | **567.8M** ⚠️ | XLM-R large, 8192 ctx | F32 | `5617a9f61b02` | mit |
 | `AITeamVN/Vietnamese_Embedding` | 567.8M | XLM-R large, 8192 ctx | F32 | `dea33aa1ab33` | apache-2.0 |
 | `Qwen/Qwen3-Embedding-0.6B` | 595.8M | Qwen3 0.6B | BF16 | `97b0c614be4d` | apache-2.0 |

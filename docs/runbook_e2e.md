@@ -1,6 +1,8 @@
 # Runbook — chạy toàn bộ pipeline
 
-> Nhánh `p3/pipeline-e2e`. Cập nhật 13/09/2026.
+> Viết 13/09/2026, cập nhật 09/10/2026. Pipeline chính thức hiện là **v0.8**
+> (`configs/v0.8_hybrid_rrf.yaml`); đường một lệnh là `python scripts/run_e2e.py` (README mục 7).
+> Runbook này giữ thứ tự các giai đoạn như đã chạy thật, để biết mỗi con số đến từ đâu.
 > Máy local = MacBook M4 (ARM64, MPS). Kaggle = nơi duy nhất thật sự cần, để encode corpus.
 > **Không bao giờ chạy bất cứ thứ gì trên `data/holdout.json`** — mọi script đã chặn cứng,
 > muốn qua phải thêm `--allow-holdout`, và chỉ khi cả nhóm đã chốt đó là lần đo cuối.
@@ -12,7 +14,7 @@
 ```bash
 cd ~/MeanGirls-UIT-DSC2026
 source .venv/bin/activate
-python scripts/smoke_test.py          # phải in "✅ PASS", 64 test
+python scripts/smoke_test.py          # phải in "✅ PASS", 170 test
 ```
 
 Hỏng ở đây thì dừng, đừng chạy tiếp — mọi con số sau đó vô nghĩa.
@@ -33,11 +35,11 @@ python -u scripts/run_pipeline.py --config configs/v0.3_bm25_best.yaml \
     --questions data/public-official.json --submission
 ```
 
-**Con số phải khớp ở 1a** (nếu lệch ⇒ `chunks.jsonl` hoặc `dev.json` đã khác, dừng lại tìm nguyên nhân):
+**Con số phải khớp ở 1a** — phụ thuộc kho chunk đang nằm ở `data/chunks.jsonl` (docs/reproduce.md mục 1):
 
 ```
-Recall@5   : 0.8555      Recall@20  : 0.9427      Recall@50  : 0.9700
-Chấm như BTC: recall=0.8555 precision=0.1792
+kho strict (432.142, hiện tại): Recall@5 0.8547 · Recall@20 0.9450 · Recall@50 0.9708 · BTC precision 0.1788
+kho loose  (524.422, v0.1–v0.6): Recall@5 0.8555 · Recall@20 0.9427 · Recall@50 0.9700 · BTC precision 0.1792
 ```
 
 Ra: `outputs/v0.3_bm25_best/submission.zip` — nộp được ngay.
@@ -70,7 +72,7 @@ mảnh đã xong, `--resume` mảnh dở. Khi đủ 8 mảnh, tài khoản chạ
 ## Giai đoạn 3 — dense + so với BM25 (local)
 
 ```bash
-pip install torch transformers        # CHƯA có trong .venv; báo P1 để thêm vào requirements + README
+pip install -r requirements-dense.txt   # torch, transformers (phiên bản đã pin)
 python -u scripts/run_pipeline.py --config configs/v0.4_dense.yaml \
     --questions data/dev.json --eval
 ```
@@ -116,14 +118,15 @@ python -u scripts/run_pipeline.py --config configs/v0.7_bm25_calib.yaml \
 nhưng *hình dạng* khe hở của BM25, của RRF và của cross-encoder thì khác nhau. Đổi tầng
 trước đó ⇒ fit lại, đừng bê θ cũ sang.
 
-## Giai đoạn 5 — những thứ CHƯA có code
+## Giai đoạn 5 — hybrid BM25 + dense (đã làm, đây là v0.8)
 
-| Cần | Để làm gì |
-|---|---|
-| `src/retrieval/hybrid.py` | hợp nhất RRF BM25 + dense ở mức chunk (`type: hybrid` trong YAML) |
-| `scripts/tune_rrf.py` | chốt `w`/`k` trên `train_split` rồi mới đo dev — không chọn tham số trên tập đo |
+```bash
+python scripts/tune_rrf.py --config configs/v0.8_hybrid_rrf.yaml --limit-fit 0      # chọn w/k trên train_split
+python -u scripts/run_pipeline.py --config configs/v0.8_hybrid_rrf.yaml --questions data/dev.json --eval
+```
 
----
+Kỳ vọng dev: `Recall@5 0.9384 · Recall@50 0.9857 · BTC recall 0.9354 precision 0.2451`. θ calibrate
+của v0.8 fit lại trên ranking hybrid (giai đoạn 4 với ranking của v0.8), KHÔNG bê θ của BM25.
 
 ## Phụ lục — các phép đo phụ, chạy khi nào muốn (local, đều vài phút)
 

@@ -1,6 +1,11 @@
 # DSC2026 — Task 1 LegalIR: Kế hoạch 6 tuần cho team 4 người
 
 > Bản v4 — cập nhật 12/08/2026, chỉ thêm thông tin về model, không ảnh hưởng nhiều.
+>
+> **Trạng thái 09/10/2026** — tài liệu này là KẾ HOẠCH, giữ nguyên để đối chiếu. Hệ thống thật khác
+> kiến trúc mục 2: không fine-tune bi-encoder, không cross-encoder (zero-shot làm tệ R@5), hợp nhất
+> RRF ở mức doc thay vì chunk. Pipeline hiện tại và số đo: README mục 1; trạng thái từng vòng việc:
+> docs/pipeline_e2e_plan.md. Ô `dl_from_scratch` của ma trận mục 0.6 vẫn trống.
 
 ---
 

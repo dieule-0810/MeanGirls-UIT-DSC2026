@@ -47,78 +47,88 @@ top-5 — giá trị nằm ở "doc đúng có lọt vào tập hay không" và 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate   # Python 3.11.x, verify_env fail nếu khác
 pip install -r requirements.txt                        # lõi: numpy, scipy, PyYAML
-pip install -r requirements-p3.txt                     # tuỳ chọn: pyvi / underthesea cho tokenizer P3
+pip install -r requirements-dense.txt                  # torch, transformers — cần cho v0.8 (dense)
+pip install -r requirements-p3.txt                     # tuỳ chọn: pyvi / underthesea cho lưới tokenizer
 
-python scripts/fetch_data.py --check-only    # dữ liệu BTC đã đủ chưa
-python scripts/fetch_data.py --from ~/Downloads   # đã tải tay từ Drive → chỉ cần chỉ chỗ
-python -m src.data.parse_corpus              # → data/corpus_clean.jsonl  (8532 dòng)
-python -m src.data.chunker                   # → data/chunks.jsonl        (525023 chunk)
-python -m src.data.split_data                # → holdout 1000 / train_split 5689 / error_pool 300
-
-python -m src.verify_env            # phải in "✅ Môi trường OK"
-python scripts/smoke_test.py        # verify_env + toàn bộ pytest — CHẠY TRƯỚC MỌI THỨ
+python scripts/smoke_test.py        # verify_env + toàn bộ pytest (170 test) — CHẠY TRƯỚC MỌI THỨ
 python -m pytest tests/ -q          # test riêng
-python scripts/run_v0.1.py          # pipeline end-to-end → outputs/v0.1_bm25/submission.zip
 
-# P3 — first-stage retrieval
-python -m src.retrieval.bm25 --config configs/v0.1_bm25.yaml \
-    --questions data/holdout.json --out outputs/tmp/preds.json
-python scripts/bench_retrieval.py --config configs/v0.2_bm25_tokenizer.yaml   # lưới tokenizer × pooling
-python scripts/bench_retrieval.py --demo                                      # chạy trên corpus giả, không cần data/
+# Dữ liệu (P2) — docs/exclusion_decisions.json do eda.py sinh, bị .gitignore chặn
+python scripts/eda.py --out outputs/eda/eda_notes.md          # → docs/exclusion_decisions.json
+python -m src.data.parse_corpus                               # → data/corpus_clean.jsonl (8.507 dòng)
+python -m src.data.chunker --strategy strict --out data/chunks.jsonl   # 432.142 chunk — kho của v0.8
+python -m src.data.chunker                                    # strategy loose: 524.422 chunk — kho v0.1–v0.6
+python -m src.data.split_data                                 # → holdout 1000 / dev 1000 / error_pool 300 / train_split 4689
 
-# P3 — hợp nhất RRF nhiều nguồn (hybrid là một retriever, KHÔNG phải một tầng của runner)
-python scripts/run_pipeline.py --config configs/v0.8_hybrid_demo.yaml --demo --eval   # không cần torch
-python scripts/tune_rrf.py --config configs/v0.8_hybrid_rrf.yaml --limit-fit 1500     # chốt w/k trên train_split
+# Pipeline chính thức v0.8 (BM25 + dense, RRF mức doc, calibrate)
+python scripts/run_e2e.py --questions data/private-official.json          # một lệnh, từ dữ liệu thô
+python -u scripts/run_pipeline.py --config configs/v0.8_hybrid_rrf.yaml --questions data/dev.json --eval
+python -u scripts/run_pipeline.py --config configs/v0.8_hybrid_demo.yaml --demo --eval   # không cần data/, torch
+
+# Chọn siêu tham số — chọn trên train_split, báo cáo MỘT lần trên dev
+python scripts/tune_rrf.py --config configs/v0.8_hybrid_rrf.yaml --limit-fit 0
+python scripts/fit_calibration.py --ranking <train_split ranking_full.json> --questions data/train_split.json \
+    --verify-ranking <dev ranking_full.json> --verify-questions data/dev.json --max-recall-drop 0.003
+
+# Embedding (GPU, một lần)
+python -u scripts/encode_corpus.py --config configs/v0.4_dense.yaml --resume       # hoặc --shard K/N trên Kaggle
+
+# P3 — lưới tokenizer × pooling
+python scripts/bench_retrieval.py --demo
+python scripts/bench_retrieval.py --config configs/v0.2_bm25_tokenizer.yaml --questions data/dev.json
 
 # Tái lập bài nộp
 python scripts/verify_release.py --manifest docs/releases/v0.6_private.yaml            # kiểm hash + cấu trúc
 python scripts/verify_release.py --manifest docs/releases/v0.6_private.yaml --commands # in chuỗi lệnh đã chạy
 ```
 
-## 5. Trạng thái hiện tại (cập nhật khi đổi)
+## 5. Trạng thái hiện tại (cập nhật 09/10/2026)
 
-- Có đủ: `src/data/` (P2), `evaluate.py` / `make_submission.py` / `verify_env.py` (P1),
-  khung `BaseRetriever` + BM25 + dense + hybrid (RRF) + tokenizer tiếng Việt (P3),
-  runner `scripts/run_pipeline.py`, EDA 12 mục, test mã chấm.
+- **Pipeline chính thức: v0.8** (`configs/v0.8_hybrid_rrf.yaml`) — BM25 `syllable_bigram` + dense
+  `AITeamVN/Vietnamese_Embedding_v2`, RRF mức doc (k=20, w 0,4/0,6), bộ quyết định số lượng doc
+  (θ=0,502793). dev: R@5 0,9384 · BTC recall 0,9354 / precision 0,2451. Chưa đo holdout, chưa
+  có kê khai/tag cho lượt nộp private v0.8.
+- **`data/chunks.jsonl` hiện là kho `strict`** (432.142 chunk). Số v0.1–v0.6 đo trên kho `loose`
+  (524.422). Embedding đã encode trên kho `strict`; dùng kho khác thì `DenseRetriever` dừng.
+- **Config kế thừa bằng `extends`** (`src/common/config.py`). Mọi script đọc config qua
+  `load_config()` — KHÔNG `yaml.safe_load()` thẳng (sẽ thấy khoá `extends` mà không thấy phần kế
+  thừa). `configs/base.yaml` giữ `paths` + `top_k` chung; `v0.3_bm25_best.yaml` là khối BM25 chuẩn,
+  `v0.4_dense.yaml` là khối dense chuẩn, nguồn của hybrid kế thừa hai khối đó bằng
+  `extends: file.yaml#retrieval.bm25`.
 - **Hợp nhất nhiều nguồn là `src/retrieval/hybrid.py`, một `type: hybrid` trong YAML — KHÔNG phải
-  một tầng của runner** (INTERFACES §3: gộp là việc nội bộ của retriever). Hai mức hợp nhất:
-  `fuse_level: chunk` (RRF trên thứ hạng chunk rồi mới gộp lên doc) và `fuse_level: doc` (mỗi
-  nguồn tự gộp rồi RRF trên thứ hạng doc — đây là cách `scripts/p4_fuse.py` làm).
-  `scripts/tune_rrf.py` chốt `w`/`rrf_k` trên `train_split` rồi đo **một lần** trên `dev`, và in
-  ra **độ lạc quan** của việc quét trên chính tập đo. Đừng quét w trên tập báo cáo.
-- Mỗi bài nộp thật có một bản kê khai trong `docs/releases/*.yaml` (sha256 của đầu vào + artefact
-  + file trong zip, chuỗi lệnh, tag, điểm LB). `outputs/` và `data/` đều bị `.gitignore` chặn nên
-  đó là chỗ DUY NHẤT trong repo ràng file zip vào thứ đã sinh ra nó. Kiểm bằng
-  `scripts/verify_release.py`; lượt nộp mới thì thêm một khối `runs:` rồi chạy `--record`.
-- `data/` **không bao giờ commit** (dữ liệu BTC, `.gitignore` đã chặn `data/`, `*.json`, `*.jsonl`, checkpoint).
-  Dữ liệu nằm trên Drive team → `scripts/fetch_data.py` (xem `configs/data_sources.yaml`).
+  một tầng của runner** (INTERFACES §3). `scripts/tune_rrf.py` chốt `w`/`rrf_k` trên `train_split`
+  rồi đo **một lần** trên `dev`, và in **độ lạc quan** của việc quét trên chính tập đo.
+- Nguồn kNN câu hỏi (v0.6, private LB 0,8818) vẫn là script rời `scripts/p5_knn_fuse.py`, CHƯA
+  được đưa vào `hybrid.py` — chưa đo v0.8 + kNN.
+- Mỗi bài nộp thật cần một bản kê khai `docs/releases/*.yaml`; kiểm bằng `scripts/verify_release.py`,
+  lượt nộp mới thì thêm khối `runs:` rồi chạy `--record`.
+- `data/` **không bao giờ commit** (dữ liệu BTC). Cài đặt dữ liệu: README mục 4.
 
-### Ba chỗ đang gãy / lệch, cần chốt ở standup (đừng vá lặng lẽ rồi quên)
+### Chỗ còn treo (đừng vá lặng lẽ rồi quên)
 
-1. **Tên trường lệch INTERFACES.md.** `src/data/` ghi `id`/`passage`, hợp đồng ghi `doc_id`/`text`;
-   `chunks.jsonl` không có `position` và `chunk_id` không zero-pad (`740::3` thay vì `740::0003`).
-   `src/common/io.py` đang dịch tạm để tầng retrieval chạy được. Nhưng `src/evaluate.py:179` và
-   `src/make_submission.py:173` (file KHOÁ của P1) đọc thẳng `["doc_id"]` → **`KeyError` nếu truyền `--corpus`**.
-   Hoặc P2 đổi tên trường, hoặc sửa `INTERFACES.md` trước rồi sửa cả ba nơi — phải chọn một.
-2. **`scripts/run_v0.1.py` không chạy được nữa**: nó gọi `python -m src.data.parse_corpus --config …`
-   nhưng module của P2 không nhận `--config`, và gọi `src.data.split_holdout` trong khi file thật tên
-   `split_data.py`. Chạy từng bước bằng tay cho tới khi P1/P2 sửa.
-3. ~~Thiếu `src/data/__init__.py`~~ — **đã sửa** ở `2fa1dd6`, file tồn tại, `src.data` là package thật.
-
-4. **Nhánh `feat/pipeline-e2e` thiếu phần tái lập bài nộp so với `main`.** `p5_knn_fuse.py`,
-   `p4_to_preds.py`, `p4_check_submission.py`, `docs/reproduce.md`, `RUN_PRIVATE_KNN.md` chỉ có
-   trên `main`; và `scripts/p4_fuse.py` ở nhánh này từng **mất cờ `--w`** — bỏ cờ đó thì script
-   quay lại quét `w` trên chính tập private, tức tune trên tập thi. Đã khôi phục cả 6 file từ
-   `main` sang nhánh này; nếu bạn thấy `unrecognized arguments: --w` thì đang đứng ở bản cụt.
+1. Lượt nộp private v0.8 (`outputs/private_hybrid_doc_calibrated/`) chưa có kê khai, chưa có tag,
+   chưa ghi điểm LB vào `experiments.csv`. Repo hiện **không có git tag nào** (kể cả tag mà kê khai
+   v0.6 nhắc tới).
+2. Điểm BM25 lệch ~1e-4 giữa hai tiến trình vì thứ tự từ vựng phụ thuộc `PYTHONHASHSEED`
+   (thứ hạng không đổi). Cần khớp từng byte thì đặt `PYTHONHASHSEED=0`.
+3. Ma trận bài báo còn trống ô `dl_from_scratch` (docs/pipeline_e2e_plan.md vòng 4).
 
 ## 6. Quy ước code
 
-- **Không hard-code hằng số.** Mỗi thí nghiệm = 1 file YAML trong `configs/`, script nhận `--config`.
-- Mọi retriever khớp `BaseRetriever` (`INTERFACES.md` mục 3): `index(chunks)` và
-  `search(queries, top_k) -> list[list[tuple[str, float]]]`, đã gộp chunk→doc, đã dedupe, đã sort giảm dần,
-  đã cắt `top_k`. **Gộp chunk→doc là việc nội bộ của retriever**, không đẩy ra ngoài.
+- **Không hard-code hằng số.** Mỗi thí nghiệm = 1 file YAML trong `configs/`, chỉ ghi phần KHÁC
+  config nó kế thừa; script nhận `--config` và đọc bằng `src.common.config.load_config`.
+- Mọi retriever khớp `BaseRetriever` (`INTERFACES.md` mục 3): chỉ viết `index(chunks)` và
+  `_score_chunks(queries, n)`; khung lo gộp chunk→doc, dedupe, sort, cắt `top_k`, `check_contract()`.
+  Tham số gom trong dataclass (`PoolingConfig`, `BM25Config`, `EncoderConfig`, `FusionConfig`);
+  dựng từ YAML qua `Retriever.from_spec(dict)` / `build_retriever(spec)`, không gọi constructor
+  với hàng chục kwargs.
 - Định dạng dự đoán nội bộ toàn pipeline: `Predictions = dict[str, list[str]]` (phẳng). Cấu trúc
   `{"answer": [...]}` của BTC **chỉ xuất hiện** trong `make_submission.py`.
+- Helper dùng chung: `src.common.runinfo` (`git_commit`, `guard_holdout`, `append_experiment_rows`),
+  `src.common.io` (`load_chunks`, `load_questions`, `load_labelled`, `load_corpus_ids`),
+  `src.common.demo` (corpus giả cho `--demo`). Đừng chép lại trong script mới.
+- Docstring theo **Google style** (dòng tóm tắt ngay sau `"""`, rồi `Args:` / `Returns:` /
+  `Raises:` khi tham số không hiển nhiên), nội dung tiếng Việt.
 - Tên file trung gian cố định (`INTERFACES.md` mục 7) — không tự đổi.
 - Fail loud: thà dừng với thông báo rõ còn hơn nộp một file sai im lặng.
 

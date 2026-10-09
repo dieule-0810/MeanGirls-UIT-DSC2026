@@ -1,5 +1,21 @@
 # Kế hoạch 5 vòng — pipeline end-to-end (trừ chunking)
 
+> **Trạng thái 09/10/2026** (bản kế hoạch gốc giữ nguyên bên dưới để đối chiếu):
+>
+> | Vòng | Trạng thái |
+> |---|---|
+> | 1 — runner E2E + BM25 chốt | ✅ `scripts/run_pipeline.py`, `scripts/run_e2e.py`, `configs/v0.3_bm25_best.yaml` |
+> | 2 — dense zero-shot | ✅ `src/retrieval/dense.py`, `scripts/encode_corpus.py` — dev R@5 0,9234 một mình |
+> | 3 — hợp nhất RRF | ✅ `src/retrieval/hybrid.py`, `scripts/tune_rrf.py` — dev R@5 0,9384 (v0.8) |
+> | 4a — DL train-from-scratch | ❌ chưa có code — ô `dl_from_scratch` của ma trận bài báo vẫn trống |
+> | 4b — fine-tune bi-encoder | ❌ chưa có code |
+> | 5 — rerank / calibrate | ✅ calibrate (`src/rerank/calibrate.py`, `scripts/fit_calibration.py`); ❌ fine-tune cross-encoder |
+>
+> Các script ghi ở vòng 4 và vòng 5 (`train_scratch.py`, `mine_hard_negatives.py`,
+> `train_biencoder.py`, `train_cross_encoder.py`, `scratch_encoder.py`, `bench_dense.py`,
+> `sweep_candidate_cap.py`) **chưa tồn tại**; `sweep_candidate_cap` đã được thay bằng
+> `scripts/check_candidate_cap.py`. `scripts/run_v0.1.py` đã gỡ, thay bằng `scripts/run_e2e.py`.
+
 > Chủ sở hữu bản kế hoạch: **P3**. Ngày lập: 12/09/2026. Nhánh: `p3/pipeline-e2e`.
 > Phạm vi: từ `chunks.jsonl` (P2 giao) đến `submission.zip`. **Không đụng chunker.**
 >
