@@ -1,20 +1,23 @@
-"""
-Bản sao chính xác logic chấm điểm của BTC (scoring.py).
+"""Bản sao chính xác logic chấm điểm của BTC (`vendor/btc_scoring/scoring.py`).
 
-⚠️ CHỦ SỞ HỮU: P1. Không sửa trực tiếp — báo P1.
-⚠️ File này CỐ TÌNH giữ nguyên mọi hành vi biên của BTC, kể cả những chỗ trông như bug.
-   Xem docs/scoring_behaviour.md trước khi thắc mắc.
+⚠️ CHỦ SỞ HỮU: P1 (file KHOÁ). File này CỐ TÌNH giữ nguyên mọi hành vi biên của BTC, kể cả
+những chỗ trông như bug — đọc docs/scoring_behaviour.md trước khi thắc mắc. Khớp với mã chấm
+thật được kiểm bởi `tests/test_scoring.py`.
 
-Dùng:
+Typical usage example:
+
     from src.evaluate import eval_official
-    eval_official({"q1": ["100"]}, {"q1": ["100"]})
-    # → {'recall': 1.0, 'precision': 1.0}
+    eval_official({"q1": ["100"]}, {"q1": ["100"]})   # → {'recall': 1.0, 'precision': 1.0}
+
+    python -m src.evaluate --preds outputs/v0.8_hybrid_rrf/predictions.json --truth data/dev.json
 """
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
+
+from src.common.io import load_corpus_ids
 
 MAX_ANSWERS = 5
 
@@ -26,18 +29,23 @@ def eval_official(
     preds: dict[str, list[str]],
     truth: dict[str, list[str]],
 ) -> dict[str, float]:
-    """
-    preds : {qid: [doc_id, ...]}   — định dạng NỘI BỘ (phẳng), không phải {"answer": ...}
-    truth : {qid: [doc_id, ...]}
+    """Chấm điểm đúng công thức BTC.
 
-    Tái hiện chính xác:
-      recall    = mean_k  |truth[k] ∩ preds[k]| / |truth[k]|   nếu 0 < len(preds[k]) <= 5, ngược lại 0
-      precision = mean_k  |truth[k] ∩ preds[k]| / len(preds[k]) nếu 0 < len(preds[k]) <= 5, ngược lại 0
+    recall    = mean_k |truth[k] ∩ preds[k]| / |truth[k]|    nếu 0 < len(preds[k]) ≤ 5, ngược lại 0
+    precision = mean_k |truth[k] ∩ preds[k]| / len(preds[k])  nếu 0 < len(preds[k]) ≤ 5, ngược lại 0
 
-    Lưu ý các hành vi được giữ nguyên có chủ đích:
-      - mẫu số precision là len(LIST), không phải len(set) → trùng lặp bị phạt
-      - phép giao dùng set() → so sánh theo KIỂU, int 100 != str "100"
-      - thiếu/thừa qid → raise, giống BTC (ở đó là crash container chấm điểm)
+    Hành vi giữ nguyên có chủ đích: mẫu số precision là len(LIST) nên trùng lặp bị phạt; phép
+    giao dùng set() nên so theo KIỂU (int 100 != str "100"); thiếu/thừa qid thì raise.
+
+    Args:
+        preds: `{qid: [doc_id, ...]}` — định dạng NỘI BỘ (phẳng), không phải `{"answer": ...}`.
+        truth: `{qid: [doc_id, ...]}`.
+
+    Returns:
+        `{"recall": float, "precision": float}`.
+
+    Raises:
+        ValueError: Tập qid không khớp — ở BTC đây là crash container, submission FAILED.
     """
     if len(preds) != len(truth):
         raise ValueError(
@@ -79,9 +87,17 @@ def diagnose(
     truth: dict[str, list[str]],
     corpus_ids: set[str] | None = None,
 ) -> dict:
-    """
-    Chạy CÙNG với eval_official mỗi lần đánh giá.
-    Bắt các chế độ hỏng im lặng mà leaderboard chỉ hiện ra bằng một con số 0.
+    """Bắt các chế độ hỏng im lặng mà leaderboard chỉ hiện ra bằng một con số 0.
+
+    Chạy CÙNG `eval_official` mỗi lần đánh giá, trên dự đoán THÔ (trước khi ép str).
+
+    Args:
+        preds: `{qid: [doc_id, ...]}` chưa làm sạch.
+        truth: Nhãn (chỉ để biết số câu).
+        corpus_ids: Tập doc_id của corpus để bắt id lạ; None = bỏ qua.
+
+    Returns:
+        `{"issues", "n_questions", "avg_answers_per_q", "size_distribution"}`.
     """
     issues: list[str] = []
 
@@ -127,9 +143,17 @@ def recall_at_k(
     truth: dict[str, list[str]],
     k: int,
 ) -> float:
-    """
-    Recall@k KHÔNG giới hạn 5 — dùng để P3 đo tầng 1 (KPI Recall@50/@100).
-    Đây là TRẦN CỨNG của toàn hệ thống: doc không lọt top-k thì reranker không cứu được.
+    """Recall@k KHÔNG giới hạn 5 — đo tầng 1 (KPI Recall@50 của P3).
+
+    Đây là TRẦN CỨNG của toàn hệ thống: doc không lọt top-k thì tầng sau không cứu được.
+
+    Args:
+        ranked: `{qid: [doc_id, ...]}` đã xếp hạng, dài tuỳ ý.
+        truth: Nhãn.
+        k: Độ sâu cắt.
+
+    Returns:
+        Recall trung bình trên các qid của `truth`.
     """
     vals = [
         len(set(truth[q]) & set(ranked.get(q, [])[:k])) / len(truth[q])
@@ -139,7 +163,17 @@ def recall_at_k(
 
 
 def load_truth(path: str | Path) -> dict[str, list[str]]:
-    """Đọc train.json ({qid: {question, answer}}) hoặc dạng phẳng ({qid: [ids]})."""
+    """Đọc nhãn từ file câu hỏi.
+
+    Args:
+        path: `{qid: {"question", "answer"}}` (train/dev/holdout) hoặc dạng phẳng `{qid: [ids]}`.
+
+    Returns:
+        `{qid: [doc_id, ...]}`, mọi id là str.
+
+    Raises:
+        ValueError: Có `answer=null` — đây là file thi, không phải ground truth.
+    """
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     out = {}
     for qid, v in raw.items():
@@ -150,43 +184,14 @@ def load_truth(path: str | Path) -> dict[str, list[str]]:
     return out
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Chấm điểm theo đúng công thức BTC.")
-    ap.add_argument("--preds", required=True, help="{qid: [doc_id]} hoặc {qid: {answer: [...]}}")
-    ap.add_argument("--truth", required=True, help="train.json hoặc holdout.json")
-    ap.add_argument("--corpus", default=None, help="corpus_clean.jsonl để kiểm doc_id lạ")
-    args = ap.parse_args()
+def _read_preds(path: str | Path) -> dict:
+    """Đọc dự đoán dạng phẳng `{qid: [ids]}` hoặc dạng BTC `{qid: {"answer": [...]}}`, chưa ép kiểu."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {str(k): (v["answer"] if isinstance(v, dict) else v) for k, v in raw.items()}
 
-    raw = json.loads(Path(args.preds).read_text(encoding="utf-8"))
-    preds = {
-        str(k): [str(d) for d in (v["answer"] if isinstance(v, dict) else v)]
-        for k, v in raw.items()
-    }
-    truth = load_truth(args.truth)
 
-    corpus_ids = None
-    if args.corpus:
-        corpus_ids = set()
-
-        corpus_path = Path(args.corpus)
-
-        with corpus_path.open("r", encoding="utf-8") as fh:
-            for line_no, line in enumerate(fh, 1):
-                if not line.strip():
-                    continue
-
-                try:
-                    corpus_ids.add(json.loads(line)["doc_id"])
-                except json.JSONDecodeError as e:
-                    raise RuntimeError(
-                        f"JSONL lỗi tại {corpus_path}, dòng {line_no}: {e}"
-                    ) from e
-
-    # Chẩn đoán chạy trên dữ liệu THÔ (trước khi ép str) để bắt được lỗi kiểu
-    raw_preds = {str(k): (v["answer"] if isinstance(v, dict) else v) for k, v in raw.items()}
-    diag = diagnose(raw_preds, truth, corpus_ids)
-
-    scores = eval_official(preds, truth)
+def _print_report(scores: dict, diag: dict) -> None:
+    """In điểm và chẩn đoán."""
     print(f"Recall    : {scores['recall']:.4f}   ← metric chính")
     print(f"Precision : {scores['precision']:.4f}   ← tie-break")
     print(f"\nSố câu hỏi: {diag['n_questions']}, trung bình {diag['avg_answers_per_q']:.2f} doc/câu")
@@ -195,6 +200,23 @@ def main() -> int:
         print("\nCẢNH BÁO:")
         for it in diag["issues"]:
             print(f"  {it}")
+
+
+def main() -> int:
+    """CLI: chấm một file dự đoán theo đúng công thức BTC và in chẩn đoán."""
+    ap = argparse.ArgumentParser(description="Chấm điểm theo đúng công thức BTC.")
+    ap.add_argument("--preds", required=True, help="{qid: [doc_id]} hoặc {qid: {answer: [...]}}")
+    ap.add_argument("--truth", required=True, help="dev.json / holdout.json / train.json")
+    ap.add_argument("--corpus", default=None, help="corpus_clean.jsonl để kiểm doc_id lạ")
+    args = ap.parse_args()
+
+    raw_preds = _read_preds(args.preds)
+    truth = load_truth(args.truth)
+    corpus_ids = load_corpus_ids(args.corpus) if args.corpus else None
+    # Chẩn đoán chạy trên dữ liệu THÔ (trước khi ép str) để bắt được lỗi kiểu.
+    diag = diagnose(raw_preds, truth, corpus_ids)
+    scores = eval_official({k: [str(d) for d in v] for k, v in raw_preds.items()}, truth)
+    _print_report(scores, diag)
     return 0
 
 
