@@ -1,66 +1,26 @@
-# v0.2 — BM25 + tokenizer tiếng Việt. Thí nghiệm của P3 (plan.md mục 4, KPI Recall@50).
+# v0.2 — Lưới BM25 tokenizer × gộp chunk→doc (P3, KPI Recall@50). Dùng với
+# `scripts/bench_retrieval.py`; khối `bench` quyết định lưới, `tokenizer`/`pool` ở dưới chỉ là
+# giá trị khi chạy file này đơn lẻ.
 #
-# Giả thuyết H1: word-segment tiếng Việt (pyvi/underthesea) tăng Recall@50 của BM25 so với
-# tách âm tiết thuần, vì term ghép ("cơ_quan") hiếm hơn → IDF cao hơn → ít khớp nhiễu.
-# Giả thuyết H1b: phần lớn mức tăng đó lấy lại được bằng bigram âm tiết, KHÔNG cần
-# dependency nặng — nếu đúng thì Docker của P1 nhẹ đi và không phụ thuộc thư viện bên thứ ba.
-# Giả thuyết H2: gộp chunk→doc bằng mean_top3/logsumexp vượt max, vì văn bản đúng thường
-# khớp ở nhiều điều khoản chứ không chỉ một.
+# Giả thuyết H1: word-segment (pyvi/underthesea) tăng Recall@50 so với âm tiết thuần, vì term
+# ghép ("cơ_quan") hiếm hơn → IDF cao hơn → ít khớp nhiễu.
+# Giả thuyết H1b: phần lớn mức tăng đó lấy lại được bằng bigram âm tiết, KHÔNG cần dependency.
+# Giả thuyết H2: gộp mean_topN/logsumexp vượt max, vì văn bản đúng khớp ở nhiều điều khoản.
 #
-# Không hằng số nào được hard-code trong code (INTERFACES.md mục 6).
+# Kết quả: docs/bench_v0.2_tokenizer.md — syllable_bigram + mean_top2 thắng (→ v0.3_bm25_best).
+extends: v0.3_bm25_best.yaml
 exp_id: v0.2_bm25_tok
-seed: 42
 
 paths:
-  corpus_raw:   data/selected-contexts
-  train_raw:    data/train.json
-  questions:    data/public-official.json
-  corpus_clean: data/corpus_clean.jsonl
-  chunks:       data/chunks.jsonl
-  holdout:      data/holdout.json      # ĐO LẦN CUỐI — bench KHÔNG được chạm (§1.1)
-  dev:          data/dev.json          # tập đo lúc thử nghiệm, dùng chung cả nhóm
-  train_split:  data/train_split.json
-  cache_dir:    data/cache            # cache token đã cắt, .gitignore đã chặn data/
-  out_dir:      outputs/v0.2_bm25_tok
-
-chunking:
-  max_words: 180
-  overlap_words: 45
-  prepend_name: false       # chưa implement ở chunker; đã test không cần ở tầng rerank, chưa test ở BM25
+  out_dir: outputs/v0.2_bm25_tok
 
 retrieval:
-  top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống
-  top_k_submit: 5           # BTC chặn cứng ở 5
-  ranking_full_k: 50        # độ sâu dump ranking_full.json cho P4 (tách L1-RETRIEVE/L1-RERANK)
   bm25:
-    k1: 1.5
-    b: 0.75
-    # INTERFACES §3b: max BỊ LOẠI (thua mean_top3 có ý nghĩa, McNemar 56-33 p=0,0197).
-    # logsumexp cho pipeline CÓ rerank (R@50 là trần của reranker ⇒ là ràng buộc) —
-    # v0.2 sinh ứng viên cho P4 nên dùng bản này; mean_top2 mới là bản cho BM25 thuần.
-    pool: logsumexp         # sum | mean_topN (vd mean_top2) | logsumexp — KHÔNG dùng max
-    pool_tau: 1.0           # chỉ dùng cho logsumexp
-    tokenizer: regex        # regex | whitespace | syllable_bigram | pyvi | underthesea
-    tokenizer_opts:
-      fold_tone: true       # "hoà" ↔ "hòa" về một dạng
-      min_len: 1
-    min_df: 1               # cắt term hiếm; 2–3 làm vocab nhẹ hẳn trên corpus thật
-    # Cắt ứng viên: đã kiểm tương đương với null CHO TỪNG TOKENIZER trên error_pool 300 câu
-    # (scripts/check_candidate_cap.py) — bản kiểm cũ chỉ chạy trên regex, mà syllable_bigram
-    # sinh gấp đôi số term nên phân bố điểm chunk khác hẳn. Kết quả: docs/candidate_cap_check.md.
-    candidate_chunks: 2000  # số chunk giữ lại trước khi gộp lên doc; null = giữ tất cả (chậm)
-    n_jobs: 8               # tách từ đa tiến trình, chỉ có ý nghĩa với pyvi/underthesea (máy 14 nhân)
-    batch_size: 64
+    tokenizer: regex
+    pool: logsumexp
 
-# Lưới cho scripts/bench_retrieval.py. Backend chưa cài sẽ bị bỏ qua kèm cảnh báo,
-# không làm chết cả lưới.
 bench:
   tokenizers: [regex, whitespace, syllable_bigram, pyvi, underthesea]
-  # mean_top2 là cấu hình THẮNG trong sweep của P4 trên dev n=1000 (+0,0253 so với max,
-  # McNemar 43-19, p=0,0035, KTC95 [+0,0113 +0,0398]) — thiếu nó thì tokenizer thắng sẽ
-  # được chọn trên một pooling team đã bỏ. max/sum giữ lại làm mốc âm, không phải ứng viên.
   pools: [max, mean_top2, mean_top3, logsumexp, sum]
   recall_at: [5, 20, 50, 100]
-  # null = TOÀN BỘ dev (1.000 câu). Đặt số ở đây là tự cắt khả năng so với mọi số liệu
-  # khác của nhóm — mọi thứ P4 đo đều trên dev-1000.
   n_questions: null
