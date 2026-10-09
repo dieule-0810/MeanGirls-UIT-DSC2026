@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-Kiểm một bản kê khai bài nộp (`docs/releases/*.yaml`) — file zip trên đĩa có còn đúng là file
-đã nộp không, và nó được sinh ra từ cái gì. CHỦ SỞ HỮU: P3.
+"""Kiểm một bản kê khai bài nộp (`docs/releases/*.yaml`): file trên đĩa còn đúng là file đã nộp không. P3.
 
 VÌ SAO CẦN. `outputs/` và `data/` đều nằm trong `.gitignore`, nên không có gì trong repo ràng
 bài nộp vào kho chunk, vào tập câu hỏi, hay vào commit đã sinh ra nó. `plan.md` §1 đòi mọi
@@ -44,6 +42,7 @@ CHUNK = 1 << 20
 
 
 def sha256_file(path: Path) -> tuple[str, int]:
+    """SHA-256 và số byte của file, đọc theo khối 1 MB."""
     h, n = hashlib.sha256(), 0
     with path.open("rb") as fh:
         while block := fh.read(CHUNK):
@@ -53,6 +52,7 @@ def sha256_file(path: Path) -> tuple[str, int]:
 
 
 def git(*args: str) -> str | None:
+    """Chạy một lệnh git trong repo; lỗi thì trả None."""
     try:
         return subprocess.check_output(["git", *args], cwd=REPO, stderr=subprocess.DEVNULL).decode().strip()
     except Exception:
@@ -60,8 +60,11 @@ def git(*args: str) -> str | None:
 
 
 class Report:
-    """Gom kết quả rồi in một lần. Fail loud, nhưng in HẾT chứ không dừng ở lỗi đầu tiên —
-    biết cả năm chỗ hỏng trong một lượt chạy thì sửa được một lần."""
+    """Gom kết quả kiểm rồi in một lần.
+
+    Fail loud, nhưng in HẾT chứ không dừng ở lỗi đầu tiên — biết cả năm chỗ hỏng trong một lượt
+    chạy thì sửa được một lần.
+    """
 
     def __init__(self) -> None:
         self.ok: list[str] = []
@@ -69,10 +72,12 @@ class Report:
         self.fail: list[str] = []
 
     def add(self, good: bool, msg: str, soft: bool = False) -> bool:
+        """Ghi một kết quả; `soft=True` thì hỏng chỉ tính là cảnh báo."""
         (self.ok if good else (self.warn if soft else self.fail)).append(msg)
         return good
 
     def show(self) -> int:
+        """In mọi kết quả; trả mã thoát 1 nếu có mục hỏng."""
         for m in self.ok:
             print(f"  ✅ {m}")
         for m in self.warn:
@@ -84,7 +89,14 @@ class Report:
 
 
 def check_hashes(entries: dict, rep: Report, label: str, record: bool) -> None:
-    """`entries` = {đường dẫn: {sha256, bytes, inner?}}. `record=True` thì ghi đè giá trị đo được."""
+    """Đối chiếu sha256 của một nhóm file với kê khai.
+
+    Args:
+        entries: `{đường dẫn: {sha256, bytes, inner?}}`.
+        rep: Nơi gom kết quả.
+        label: Nhãn nhóm khi in.
+        record: True thì GHI ĐÈ giá trị đo được vào `entries` thay vì so.
+    """
     for rel, want in (entries or {}).items():
         p = REPO / rel
         if not p.exists():
@@ -107,6 +119,7 @@ def check_hashes(entries: dict, rep: Report, label: str, record: bool) -> None:
 
 
 def check_zip_inner(path: Path, inner: dict, rep: Report, label: str, record: bool) -> None:
+    """Đối chiếu sha256 của file BÊN TRONG zip (hash ngoài đổi theo dấu thời gian zip, hash trong thì không)."""
     with zipfile.ZipFile(path) as z:
         have = {n for n in z.namelist() if not n.endswith("/")}
         for name, want in inner.items():
@@ -128,11 +141,17 @@ def check_zip_inner(path: Path, inner: dict, rep: Report, label: str, record: bo
 
 
 def check_submission_shape(path: Path, expect: dict, questions: Path | None, rep: Report, label: str) -> None:
-    """
-    Bốn bất biến của mã chấm BTC (AGENTS.md §3), kiểm lại trên chính file đã nộp.
+    """Bốn bất biến của mã chấm BTC, kiểm lại trên chính file đã nộp.
 
-    Không thay `scripts/p4_check_submission.py` (kiểm TRƯỚC khi nộp, có cả chế độ chấm bằng mã
-    BTC) — cái này kiểm SAU, trên file kê khai, và chạy được cả khi không còn corpus.
+    Không thay `scripts/p4_check_submission.py` (kiểm TRƯỚC khi nộp) — cái này kiểm SAU, trên
+    file kê khai, chạy được cả khi không còn corpus.
+
+    Args:
+        path: File zip đã nộp.
+        expect: Khối `expect` của kê khai (`n_questions`, `docs_per_question`).
+        questions: File câu hỏi để đối chiếu tập qid; None = bỏ qua.
+        rep: Nơi gom kết quả.
+        label: Nhãn lượt nộp.
     """
     with zipfile.ZipFile(path) as z:
         names = [n for n in z.namelist() if not n.endswith("/")]
@@ -176,13 +195,60 @@ def check_submission_shape(path: Path, expect: dict, questions: Path | None, rep
                 f"→ mã chấm CRASH và có thể vẫn tiêu một lượt nộp")
 
 
+def print_commands(man: dict, runs: dict) -> None:
+    """In chuỗi lệnh tái lập của từng lượt."""
+    for name, run in runs.items():
+        print(f"\n# ── lượt {name} — {run.get('mo_ta', '')} ──")
+        for s in man.get("shared_steps", []) + run.get("steps", []):
+            print(f"\n# {s['id']} → {s['out']}" + (f"   ({s['chi_phi']})" if s.get("chi_phi") else ""))
+            print(s["cmd"])
+
+
+def check_tag(name: str, run: dict, rep: Report) -> None:
+    """Tag tồn tại và trỏ đúng commit đã khai; không có tag là cảnh báo (plan.md §1)."""
+    tag, commit = run.get("tag"), run.get("commit")
+    if not tag:
+        rep.add(False, f"[{name}] KHÔNG có git tag. plan.md §1: mọi submission thật phải sinh từ một tag.", soft=True)
+        return
+    at = git("rev-list", "-n", "1", tag)
+    if at is None:
+        rep.add(False, f"[{name}] tag '{tag}' không tồn tại trong repo này")
+    elif commit:
+        rep.add(at == commit, f"[{name}] tag '{tag}' → {at[:12]}" + ("" if at == commit else f", kê khai ghi {commit[:12]}"))
+
+
+def check_run(name: str, run: dict, man: dict, rep: Report, record: bool) -> None:
+    """Mọi kiểm cho một lượt nộp: tag, điểm LB, hash artefact, cấu trúc file zip."""
+    check_tag(name, run, rep)
+    lb = run.get("leaderboard") or {}
+    if lb.get("recall") is None:
+        rep.add(False, f"[{name}] chưa có điểm leaderboard trong kê khai", soft=True)
+    else:
+        rep.add(True, f"[{name}] LB recall={lb['recall']} precision={lb.get('precision')}")
+    check_hashes(run.get("artifacts", {}), rep, name, record)
+    qpath = next((REPO / rel for rel in reversed(list(man.get("inputs", {}))) if "official" in rel), None)
+    for rel in run.get("artifacts", {}):
+        if rel.endswith(".zip") and (REPO / rel).exists():
+            check_submission_shape(REPO / rel, man.get("expect", {}), qpath, rep, name)
+
+
+def print_open_issues(man: dict) -> None:
+    """In các mục `van_de` còn treo để không ai quên."""
+    treo = man.get("van_de") or []
+    if treo:
+        print(f"\n── {len(treo)} vấn đề còn treo trong kê khai ──")
+        for v in treo:
+            print(f"  [{v.get('muc', '?'):8s}] {v['id']}: {' '.join(v['mo_ta'].split())[:150]}")
+
+
 def main() -> int:
+    """Điểm vào CLI: kiểm (hoặc ghi lại) một bản kê khai."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--run", default=None, help="chỉ kiểm một lượt (vd A). Mặc định: tất cả.")
     ap.add_argument("--commands", action="store_true", help="in chuỗi lệnh tái lập rồi thoát")
     ap.add_argument("--record", action="store_true", help="GHI ĐÈ sha256 trong kê khai bằng giá trị đo được")
-    ap.add_argument("--skip-inputs", action="store_true", help="bỏ qua hash data/ (chunks.jsonl 576 MB)")
+    ap.add_argument("--skip-inputs", action="store_true", help="bỏ qua hash data/ (chunks.jsonl ~580 MB)")
     a = ap.parse_args()
 
     mpath = REPO / a.manifest
@@ -190,70 +256,26 @@ def main() -> int:
     runs = {k: v for k, v in man["runs"].items() if a.run is None or k == a.run}
     if not runs:
         raise SystemExit(f"❌ kê khai không có lượt '{a.run}'. Có: {', '.join(man['runs'])}")
-
     if a.commands:
-        for name, run in runs.items():
-            print(f"\n# ── lượt {name} — {run.get('mo_ta','')} ──")
-            for s in man.get("shared_steps", []) + run.get("steps", []):
-                print(f"\n# {s['id']} → {s['out']}" + (f"   ({s['chi_phi']})" if s.get("chi_phi") else ""))
-                print(s["cmd"])
+        print_commands(man, runs)
         return 0
 
     print(f"kê khai : {a.manifest}\nbản      : {man['release']} ({man.get('ngay')})\n"
           f"lượt     : {', '.join(runs)}\nchế độ   : {'GHI LẠI' if a.record else 'kiểm'}\n")
     rep = Report()
-
-    # 1. đầu vào
     if a.skip_inputs:
         rep.add(True, "[input] bỏ qua theo --skip-inputs", soft=True)
     else:
         check_hashes(man.get("inputs", {}), rep, "input", a.record)
-
-    # 2. từng lượt
     for name, run in runs.items():
-        tag, commit = run.get("tag"), run.get("commit")
-        if tag:
-            at = git("rev-list", "-n", "1", tag)
-            if at is None:
-                rep.add(False, f"[{name}] tag '{tag}' không tồn tại trong repo này")
-            elif commit:
-                rep.add(at == commit, f"[{name}] tag '{tag}' → {at[:12]}"
-                        + ("" if at == commit else f", kê khai ghi {commit[:12]}"))
-        else:
-            rep.add(False, f"[{name}] KHÔNG có git tag. plan.md §1: mọi submission thật phải "
-                           f"sinh từ một tag.", soft=True)
-
-        lb = run.get("leaderboard") or {}
-        if lb.get("recall") is None:
-            rep.add(False, f"[{name}] chưa có điểm leaderboard trong kê khai", soft=True)
-        else:
-            rep.add(True, f"[{name}] LB recall={lb['recall']} precision={lb.get('precision')}")
-
-        check_hashes(run.get("artifacts", {}), rep, name, a.record)
-
-        # 3. cấu trúc file nộp
-        expect = man.get("expect", {})
-        qpath = None
-        for rel in man.get("inputs", {}):
-            if "official" in rel:
-                qpath = REPO / rel
-        for rel in run.get("artifacts", {}):
-            if rel.endswith(".zip") and (REPO / rel).exists():
-                check_submission_shape(REPO / rel, expect, qpath, rep, name)
-
+        check_run(name, run, man, rep, a.record)
     code = rep.show()
-
     if a.record:
         mpath.write_text(yaml.safe_dump(man, allow_unicode=True, sort_keys=False), encoding="utf-8")
         print(f"\n✅ đã ghi lại {a.manifest}")
         print("⚠️  yaml.safe_dump KHÔNG giữ comment — xem `git diff` trước khi commit, và khôi "
               "phục phần ghi chú nếu nó biến mất.")
-
-    treo = man.get("van_de") or []
-    if treo:
-        print(f"\n── {len(treo)} vấn đề còn treo trong kê khai ──")
-        for v in treo:
-            print(f"  [{v.get('muc','?'):8s}] {v['id']}: {' '.join(v['mo_ta'].split())[:150]}")
+    print_open_issues(man)
     return code
 
 

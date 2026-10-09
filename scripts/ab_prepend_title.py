@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-A/B: gắn tiêu đề văn bản vào mọi chunk (giả thuyết H6). CHỦ SỞ HỮU: P3.
+"""A/B: gắn tiêu đề văn bản vào mọi chunk (giả thuyết H6). CHỦ SỞ HỮU: P3.
 
 Index HAI lần trên cùng corpus, cùng tokenizer, cùng pooling — khác đúng một thứ: chunk có được
 ghép "<số hiệu> <LOẠI> <tên>" ở đầu hay không.
@@ -30,16 +29,17 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 import numpy as np  # noqa: E402
-import yaml  # noqa: E402
 
 from src.common.io import load_chunks, load_questions  # noqa: E402
+from src.common.config import load_config  # noqa: E402
 from src.evaluate import eval_official, load_truth, recall_at_k  # noqa: E402
 from src.retrieval.bm25 import BM25Retriever  # noqa: E402
 from src.retrieval.enrich import prepend_titles, title_map  # noqa: E402
 
 
 def run(chunks: list[dict], spec: dict, texts: list[str], qids: list[str], top_k: int, titles: dict | None):
-    r = BM25Retriever(**spec)
+    """Index một lần (có/không gắn tiêu đề) rồi đo Recall@k trên cùng câu hỏi."""
+    r = BM25Retriever.from_spec(spec)
     r.index(chunks)
     t0 = time.perf_counter()
     ranked = r.search(texts, top_k)
@@ -64,6 +64,7 @@ def run(chunks: list[dict], spec: dict, texts: list[str], qids: list[str], top_k
 
 
 def main() -> int:
+    """Điểm vào CLI: chạy cặp A/B và in so sánh."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="configs/v0.3_bm25_best.yaml")
     ap.add_argument("--questions", default=None, help="mặc định paths.dev")
@@ -72,7 +73,7 @@ def main() -> int:
     ap.add_argument("--report", default="docs/ab_prepend_title.md")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load((REPO / args.config).read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     q_path = args.questions or cfg["paths"].get("dev")
     if "holdout" in Path(q_path).name:
         raise SystemExit("❌ holdout là tập đo lần cuối — A/B phải chạy trên dev.")

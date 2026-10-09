@@ -24,14 +24,15 @@ import time
 from pathlib import Path
 
 import numpy as np
-import yaml
 
+from src.common.config import load_config
 from src.retrieval.bm25 import retriever_from_config
 
 REPO = Path(__file__).resolve().parents[1]
 
 
 def load_chunks(path: Path, limit: int | None = None) -> list[dict]:
+    """Đọc `chunks.jsonl` (tuỳ chọn chỉ `limit` dòng đầu)."""
     out = []
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -124,6 +125,7 @@ def recall_at(rank: dict, questions: dict, k: int) -> float | None:
 
 
 def main() -> int:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/v0.1_bm25.yaml")
     ap.add_argument("--questions", required=True)
@@ -141,7 +143,7 @@ def main() -> int:
                          "chunk_id đại diện luôn là chunk BM25 cao nhất.")
     a = ap.parse_args()
 
-    cfg = yaml.safe_load(Path(a.config).read_text(encoding="utf-8"))
+    cfg = load_config(a.config)
     chunks_path = REPO / cfg["paths"]["chunks"]
 
     t0 = time.time()

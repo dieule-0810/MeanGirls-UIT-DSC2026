@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Kiểm tương đương `candidate_chunks: 2000` vs `null`. CHỦ SỞ HỮU: P3.
+"""Kiểm tương đương `candidate_chunks: 2000` vs `null`. CHỦ SỞ HỮU: P3.
 
 VÌ SAO CẦN LẠI: `configs/v0.1_bm25_cap2000.yaml` đã kiểm điều này, nhưng chỉ trên
 `tokenizer=regex` + `pool=max`. Hai thứ đó đều đổi ở v0.2:
@@ -30,7 +29,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-import yaml  # noqa: E402
+from src.common.config import load_config  # noqa: E402
 
 from src.common.io import load_chunks, load_questions  # noqa: E402
 from src.evaluate import recall_at_k  # noqa: E402
@@ -41,10 +40,12 @@ NO_CAP = 10**9  # đúng giá trị BaseRetriever dùng khi candidate_chunks: nu
 
 
 def top_docs(r: BM25Retriever, cands, pool: str, top_k: int) -> list[list[str]]:
+    """Top-k doc của mọi câu với một chiến lược gộp, trên ứng viên đã chấm sẵn."""
     return [[d for d, _ in r.pool_candidates(idx, sc, top_k, pool=pool)] for idx, sc in cands]
 
 
 def main() -> int:
+    """Điểm vào CLI: so top-k của cap 2000 với không cắt, theo từng tokenizer × pool."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default="configs/v0.2_bm25_tokenizer.yaml")
     ap.add_argument("--questions", default=None, help="mặc định: data/error_pool.json")
@@ -59,7 +60,7 @@ def main() -> int:
     ap.add_argument("--report", default="docs/candidate_cap_check.md")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load((REPO / args.config).read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     bench = cfg.get("bench", {})
     tokenizers = args.tokenizers.split(",") if args.tokenizers else bench.get("tokenizers", ["regex"])
     pools = args.pools.split(",") if args.pools else bench.get("pools", ["max"])
@@ -87,7 +88,7 @@ def main() -> int:
         print(f"\n══ tokenizer: {tok} ══")
         opts = dict(bm25_opts)
         opts["tokenizer"] = tok          # thiếu dòng này = chạy regex N lần mà bảng vẫn ghi N tên
-        r = BM25Retriever(candidate_chunks=NO_CAP, **opts)
+        r = BM25Retriever.from_spec({**opts, "candidate_chunks": NO_CAP})
         r.index(chunks)
         # Fail loud: lần chạy đầu 11/09 trượt đúng lỗi này và chỉ lộ ra vì 5 khối số liệu
         # giống hệt nhau tới từng chữ số.
