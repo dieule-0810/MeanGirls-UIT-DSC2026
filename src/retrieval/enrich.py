@@ -1,5 +1,6 @@
-"""
-Gắn tiêu đề văn bản vào chunk — CHỦ SỞ HỮU: P3. Làm ở thời điểm index, KHÔNG đụng chunker của P2.
+"""Gắn tiêu đề văn bản vào chunk lúc index (giả thuyết H6) — CHỦ SỞ HỮU: P3.
+
+Làm ở thời điểm index, KHÔNG đụng chunker của P2. Đo bằng `scripts/ab_prepend_title.py`.
 
 Giả thuyết H6: trung vị 36 chunk/văn bản, mà chỉ chunk đầu chứa tiêu đề ⇒ ~97% chunk không biết
 mình thuộc văn bản nào. Trả lại danh tính đó cho mọi chunk.
@@ -43,11 +44,17 @@ MAX_WORDS = 30      # cắt ngắn để hạn chế phình độ dài chunk và
 
 
 def extract_title(text: str, max_words: int = MAX_WORDS) -> str | None:
-    """
-    Trích `"<SỐ HIỆU> <LOẠI VĂN BẢN> <tên>"` từ phần đầu văn bản. Không thấy → None.
+    """Trích `"<SỐ HIỆU> <LOẠI VĂN BẢN> <tên>"` từ phần đầu văn bản.
 
-    Số hiệu đứng trước vì nó là phần PHÂN BIỆT nhất (IDF cao nhất); tên văn bản dùng chung
-    rất nhiều cụm khuôn mẫu giữa các văn bản.
+    Số hiệu đứng trước vì nó là phần PHÂN BIỆT nhất (IDF cao nhất); tên văn bản dùng chung rất
+    nhiều cụm khuôn mẫu giữa các văn bản.
+
+    Args:
+        text: Toàn văn bản.
+        max_words: Số từ tối đa của tiêu đề.
+
+    Returns:
+        Tiêu đề, hoặc None nếu không tìm thấy loại văn bản.
     """
     head = text[:HEAD_CHARS]
     code_m = _CODE_RE.search(head)
@@ -72,7 +79,15 @@ def extract_title(text: str, max_words: int = MAX_WORDS) -> str | None:
 
 
 def title_map(corpus_path: str | Path, max_words: int = MAX_WORDS) -> dict[str, str]:
-    """`{doc_id: tiêu đề}` cho các văn bản trích được. Văn bản không trích được thì vắng mặt."""
+    """Trích tiêu đề cho cả corpus.
+
+    Args:
+        corpus_path: `corpus_clean.jsonl`.
+        max_words: Số từ tối đa của tiêu đề.
+
+    Returns:
+        `{doc_id: tiêu đề}`; văn bản không trích được thì vắng mặt.
+    """
     out: dict[str, str] = {}
     for d in read_jsonl(corpus_path):
         doc_id = str(d.get("doc_id", d.get("id")))
@@ -85,11 +100,16 @@ def title_map(corpus_path: str | Path, max_words: int = MAX_WORDS) -> dict[str, 
 def prepend_titles(
     chunks: list[dict], titles: dict[str, str], skip_if_present: bool = True
 ) -> tuple[list[dict], dict]:
-    """
-    Trả về (chunk mới, thống kê). KHÔNG sửa tại chỗ — người gọi giữ nguyên bản gốc để A/B.
+    """Gắn tiêu đề vào đầu mỗi chunk. KHÔNG sửa tại chỗ — người gọi giữ bản gốc để A/B.
 
-    `skip_if_present`: chunk đã chứa sẵn tiêu đề (thường là chunk đầu văn bản) thì không gắn lại,
-    tránh nhân đôi tf của chính những term ta đang lo là sẽ mất giá trị.
+    Args:
+        chunks: Kho chunk.
+        titles: `{doc_id: tiêu đề}` từ `title_map`.
+        skip_if_present: Chunk đã chứa sẵn tiêu đề (thường là chunk đầu) thì không gắn lại,
+            tránh nhân đôi tf của chính những term đang lo bị mất giá trị.
+
+    Returns:
+        `(chunk mới, thống kê)`.
     """
     out, n_add, n_skip, n_no_title = [], 0, 0, 0
     for c in chunks:
