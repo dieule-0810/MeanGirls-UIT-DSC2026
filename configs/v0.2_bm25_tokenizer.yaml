@@ -17,7 +17,8 @@ paths:
   questions:    data/public-official.json
   corpus_clean: data/corpus_clean.jsonl
   chunks:       data/chunks.jsonl
-  holdout:      data/holdout.json
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — bench KHÔNG được chạm (§1.1)
+  dev:          data/dev.json          # tập đo lúc thử nghiệm, dùng chung cả nhóm
   train_split:  data/train_split.json
   cache_dir:    data/cache            # cache token đã cắt, .gitignore đã chặn data/
   out_dir:      outputs/v0.2_bm25_tok
@@ -34,21 +35,32 @@ retrieval:
   bm25:
     k1: 1.5
     b: 0.75
-    pool: max               # max | sum | mean_topN (vd mean_top3) | logsumexp
+    # INTERFACES §3b: max BỊ LOẠI (thua mean_top3 có ý nghĩa, McNemar 56-33 p=0,0197).
+    # logsumexp cho pipeline CÓ rerank (R@50 là trần của reranker ⇒ là ràng buộc) —
+    # v0.2 sinh ứng viên cho P4 nên dùng bản này; mean_top2 mới là bản cho BM25 thuần.
+    pool: logsumexp         # sum | mean_topN (vd mean_top2) | logsumexp — KHÔNG dùng max
     pool_tau: 1.0           # chỉ dùng cho logsumexp
     tokenizer: regex        # regex | whitespace | syllable_bigram | pyvi | underthesea
     tokenizer_opts:
       fold_tone: true       # "hoà" ↔ "hòa" về một dạng
       min_len: 1
     min_df: 1               # cắt term hiếm; 2–3 làm vocab nhẹ hẳn trên corpus thật
+    # Cắt ứng viên: đã kiểm tương đương với null CHO TỪNG TOKENIZER trên error_pool 300 câu
+    # (scripts/check_candidate_cap.py) — bản kiểm cũ chỉ chạy trên regex, mà syllable_bigram
+    # sinh gấp đôi số term nên phân bố điểm chunk khác hẳn. Kết quả: docs/candidate_cap_check.md.
     candidate_chunks: 2000  # số chunk giữ lại trước khi gộp lên doc; null = giữ tất cả (chậm)
-    n_jobs: 4               # tách từ đa tiến trình, chỉ có ý nghĩa với pyvi/underthesea
+    n_jobs: 8               # tách từ đa tiến trình, chỉ có ý nghĩa với pyvi/underthesea (máy 14 nhân)
     batch_size: 64
 
 # Lưới cho scripts/bench_retrieval.py. Backend chưa cài sẽ bị bỏ qua kèm cảnh báo,
 # không làm chết cả lưới.
 bench:
   tokenizers: [regex, whitespace, syllable_bigram, pyvi, underthesea]
-  pools: [max, mean_top3, logsumexp, sum]
+  # mean_top2 là cấu hình THẮNG trong sweep của P4 trên dev n=1000 (+0,0253 so với max,
+  # McNemar 43-19, p=0,0035, KTC95 [+0,0113 +0,0398]) — thiếu nó thì tokenizer thắng sẽ
+  # được chọn trên một pooling team đã bỏ. max/sum giữ lại làm mốc âm, không phải ứng viên.
+  pools: [max, mean_top2, mean_top3, logsumexp, sum]
   recall_at: [5, 20, 50, 100]
-  n_questions: null         # số câu hỏi lấy từ holdout; null = tất cả
+  # null = TOÀN BỘ dev (1.000 câu). Đặt số ở đây là tự cắt khả năng so với mọi số liệu
+  # khác của nhóm — mọi thứ P4 đo đều trên dev-1000.
+  n_questions: null

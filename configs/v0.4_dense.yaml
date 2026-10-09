@@ -1,0 +1,61 @@
+# v0.4 — Dense bi-encoder zero-shot. Thí nghiệm của P3 (KPI Recall@50).
+#
+# Giả thuyết H3: biểu diễn dày bắt được nhóm lỗi R-TERM (câu hỏi dùng từ thường dân, văn bản
+# dùng thuật ngữ pháp lý) — thứ BM25 không thể khớp vì không trùng token. Kỳ vọng mức tăng rơi
+# vào ĐÚNG nhóm lỗi đó và KHÔNG rơi vào R-NUM (số hiệu văn bản), nơi BM25 vốn mạnh. Nếu mức
+# tăng trải đều mọi nhóm thì giả thuyết SAI dù tổng recall có đẹp — phải kiểm bằng phân tầng,
+# không chỉ bằng con số tổng.
+#
+# Mốc phải vượt (BM25 tốt nhất, dev n=1000, docs/bench_v0.2_tokenizer.md):
+#     syllable_bigram + mean_top2 → R@5 = 0,8555 · R@50 = 0,9700
+# Cổng đi tiếp (plan.md Tuần 2): hybrid zero-shot phải vượt RÕ BM25. Không vượt thì dừng lại
+# debug chunking/gộp, KHÔNG đi tiếp sang fine-tune.
+exp_id: v0.4_dense
+seed: 42
+
+paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json          # đo lúc thử nghiệm
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — không chạm
+  train_split:  data/train_split.json
+  questions:    data/public-official.json
+  embeddings:   data/embeddings.npy    # tên đã khoá, INTERFACES.md mục 7
+  out_dir:      outputs/v0.4_dense
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  dense:
+    # BTC đã duyệt (13/09). Cùng XLM-R-large với AITeamVN/Vietnamese_Reranker ⇒ một họ tokenizer
+    # cho cả hai tầng. Đổi sang bge-m3 (backbone để tự fine-tune ở v0.5) chỉ cần đổi 2 dòng này:
+    #   repo: BAAI/bge-m3
+    #   revision: 5617a9f61b02
+    repo: AITeamVN/Vietnamese_Embedding_v2
+    revision: 18b44161e041bf1d3a333ab5144b5b7b93f914d2
+
+    pooling: cls            # họ BGE-M3 lấy vector dense ở CLS. Đổi sang mean là đổi model khác.
+    normalize: true         # chuẩn hoá L2 ⇒ dot product = cosine
+    query_prefix: ""        # họ BGE KHÔNG dùng prefix. E5 cần "query: "/"passage: ", Qwen3 cần
+    passage_prefix: ""      # instruction — sai prefix tụt điểm ÂM THẦM, nên khai tường minh ở đây.
+    trust_remote_code: false
+
+    # Chunk hiện tại 180 từ (~400-500 subword) nên 512 là đủ; model đỡ được 8192 nhưng cấp phát
+    # theo max_length dài chỉ tốn thời gian encode chứ không thêm thông tin. Đổi số này = phải
+    # encode lại toàn corpus.
+    max_length: 512
+    batch_size: 32          # chunk; hạ xuống 8-16 nếu OOM trên MPS
+    query_batch_size: 64
+    device: auto            # auto → cuda > mps > cpu
+    fp16: true              # chỉ áp dụng khi có GPU
+
+    pool: mean_top2         # gộp chunk→doc; mean_top2 thắng ở BM25, phải đo lại cho dense
+    pool_tau: 1.0
+    candidate_chunks: 2000  # ⚠️ cap KHÔNG trung tính với mean_topN — xem docs/candidate_cap_check.md
+
+# Lưới cho scripts/bench_dense.py
+bench:
+  pools: [max, mean_top2, mean_top3, logsumexp]
+  recall_at: [5, 20, 50, 100]
+  n_questions: null

@@ -233,13 +233,28 @@ def render_report(rows: list[dict], recall_ks: list[int], meta: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def append_experiments(rows: list[dict], cfg_path: str, nguoi_chay: str) -> None:
+def git_commit() -> str:
+    """SHA ngắn lúc chạy — không có nó thì dòng experiments.csv không tái lập được."""
     try:
-        commit = subprocess.check_output(
+        out = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"], cwd=REPO
         ).decode().strip()
+        dirty = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=REPO
+        ).decode().strip()
+        return f"{out}-dirty" if dirty else out
     except Exception:
-        commit = "unknown"
+        return "unknown"
+
+
+def append_experiments(rows: list[dict], cfg_path: str, nguoi_chay: str, tap_do: str) -> None:
+    commit = git_commit()
+    # File thiếu newline cuối thì dòng mới bị dán vào dòng cuối của người khác — đã xảy ra
+    # 11/09, làm hỏng dòng v0.2_fusion_rrf của P4 (27 cột thay vì 14).
+    raw = EXPERIMENTS_CSV.read_bytes()
+    if raw and not raw.endswith(b"\n"):
+        with EXPERIMENTS_CSV.open("ab") as fh:
+            fh.write(b"\n")
     with EXPERIMENTS_CSV.open("r", encoding="utf-8", newline="") as fh:
         header = next(csv.reader(fh))
     with EXPERIMENTS_CSV.open("a", encoding="utf-8", newline="") as fh:
@@ -252,8 +267,9 @@ def append_experiments(rows: list[dict], cfg_path: str, nguoi_chay: str) -> None
                     "nguoi_chay": nguoi_chay,
                     "commit": commit,
                     "config": cfg_path,
-                    "recall_holdout": r.get("btc_recall@5", ""),
-                    "precision_holdout": r.get("btc_precision@5", ""),
+                    "tap_do": tap_do,
+                    "recall": r.get("btc_recall@5", ""),
+                    "precision": r.get("btc_precision@5", ""),
                     "recall_lb": "",
                     "precision_lb": "",
                     "ghi_chu": " ".join(
@@ -276,11 +292,22 @@ def main() -> int:
     ap.add_argument("--config", default="configs/v0.2_bm25_tokenizer.yaml")
     ap.add_argument("--demo", action="store_true", help="Chạy trên corpus giả, không cần data/")
     ap.add_argument("--chunks", default=None, help="Ghi đè paths.chunks")
-    ap.add_argument("--questions", default=None, help="Ghi đè paths.holdout (file có nhãn)")
+    ap.add_argument("--questions", default=None, help="Ghi đè paths.dev (file có nhãn)")
+    ap.add_argument(
+        "--allow-holdout",
+        action="store_true",
+        help="Cho phép bench chạy trên holdout — chỉ dùng khi cả nhóm đã chốt đây là lần đo cuối",
+    )
     ap.add_argument("--tokenizers", default=None, help="Danh sách phẩy, ghi đè bench.tokenizers")
     ap.add_argument("--pools", default=None, help="Danh sách phẩy, ghi đè bench.pools")
     ap.add_argument("--n-questions", type=int, default=None, help="Chỉ lấy N câu đầu (chạy nhanh)")
     ap.add_argument("--report", default=None, help="File markdown xuất ra")
+    ap.add_argument(
+        "--results",
+        default=None,
+        help="File JSON xuất ra (mặc định out_dir/bench_results.json). outputs/ bị .gitignore "
+        "chặn — trỏ sang docs/ nếu đây là bản chốt cần commit",
+    )
     ap.add_argument("--log-experiments", action="store_true", help="Thêm dòng vào experiments.csv")
     ap.add_argument("--nguoi-chay", default="P3")
     args = ap.parse_args()
@@ -304,9 +331,22 @@ def main() -> int:
         qids = list(questions)
         texts = [questions[q] for q in qids]
         bm25_opts.pop("cache_dir", None)
+        q_path = "demo"
     else:
         chunks_path = args.chunks or cfg["paths"]["chunks"]
-        q_path = args.questions or cfg["paths"]["holdout"]
+        # Mặc định là paths.dev, KHÔNG phải paths.holdout: lưới 5 tokenizer × 5 pooling là
+        # 25 lần chạm tập đo. holdout chỉ được chạm đúng một lần (quy ước §1.1 của nhóm) và
+        # đã chạm rồi. Quy ước bằng lời không đủ — chặn ở đây.
+        q_path = args.questions or cfg["paths"].get("dev") or cfg["paths"]["holdout"]
+        if "holdout" in Path(q_path).name and not args.allow_holdout:
+            print(
+                f"❌ Bench đang trỏ vào {q_path}.\n"
+                f"   holdout là tập ĐO LẦN CUỐI, chạm một lần duy nhất — lưới này chạm nó "
+                f"{len(tokenizers) * len(pools)} lần.\n"
+                f"   Dùng data/dev.json (thêm `dev:` vào paths của config), hoặc "
+                f"--allow-holdout nếu cả nhóm đã đồng ý đây LÀ lần đo cuối."
+            )
+            return 1
         chunks = load_chunks(REPO / chunks_path if not Path(chunks_path).is_absolute() else chunks_path)
         qids, texts = load_questions(q_path)
         gold = load_truth(q_path)
@@ -325,6 +365,8 @@ def main() -> int:
     meta = {
         "exp_id": cfg.get("exp_id"),
         "config": args.config,
+        "commit": git_commit(),
+        "questions": "demo" if args.demo else str(q_path),
         "demo": args.demo,
         "n_chunks": len(chunks),
         "n_questions": len(qids),
@@ -336,7 +378,11 @@ def main() -> int:
 
     out_dir = REPO / cfg["paths"].get("out_dir", "outputs/bench")
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "bench_results.json").write_text(
+    results_path = Path(args.results) if args.results else out_dir / "bench_results.json"
+    if not results_path.is_absolute():
+        results_path = REPO / results_path
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    results_path.write_text(
         json.dumps({"meta": meta, "rows": rows}, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     report_path = Path(args.report) if args.report else out_dir / "bench_report.md"
@@ -347,13 +393,13 @@ def main() -> int:
 
     print("\n" + report)
     print(f"✅ {report_path}")
-    print(f"✅ {out_dir / 'bench_results.json'}")
+    print(f"✅ {results_path}")
 
     if args.log_experiments:
         if args.demo:
             print("⏭  Bỏ qua experiments.csv: số liệu demo không phải thí nghiệm thật.")
         else:
-            append_experiments(rows, args.config, args.nguoi_chay)
+            append_experiments(rows, args.config, args.nguoi_chay, Path(q_path).stem)
     return 0
 
 

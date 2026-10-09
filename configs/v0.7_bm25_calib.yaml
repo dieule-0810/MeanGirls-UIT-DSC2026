@@ -1,0 +1,56 @@
+# v0.7 — BM25 chốt (v0.3) + bộ quyết định số lượng doc. Thí nghiệm của P4.
+#
+# Giả thuyết H7: 92,1% câu chỉ có MỘT văn bản đáp án ⇒ "luôn nộp 5" bỏ không 4/5 precision
+# để mua bảo hiểm recall. Khe hở điểm đã chuẩn hoá giữa hạng 1 và hạng 2 đủ để nhận ra
+# những câu KHÔNG cần bảo hiểm đó. Recall là metric chính nên tầng này bị ràng buộc cứng:
+# precision chỉ được mua bằng recall trong ngân sách khai trước (ở đây 0,003).
+#
+# θ = 0,712481 fit trên data/train_split.json (n=4689), KHÔNG fit trên dev.
+# Chi tiết + đường cong + bootstrap: outputs/v0.7_calib/calibration.json.
+#
+# Đo được (dev n=1000, θ lấy nguyên từ tập fit):
+#     cơ sở      recall 0,8555 · precision 0,1792 · 5,00 doc/câu
+#     hiệu chỉnh recall 0,8530 · precision 0,2462 · 4,63 doc/câu   (×1,37 precision)
+#     ΔRecall = −0,0025, KTC95 cặp [−0,0055, +0,0000], 3/1000 câu xấu đi
+#
+# ⚠️ θ GẮN VỚI ĐÚNG LOẠI RANKING ĐÃ FIT. Tín hiệu bất biến với co giãn và tịnh tiến điểm,
+# nhưng HÌNH DẠNG khe hở của BM25, của RRF và của cross-encoder thì khác nhau. Đổi tầng
+# đứng trước ⇒ chạy lại scripts/fit_calibration.py, đừng bê θ này sang.
+exp_id: v0.7_bm25_calib
+seed: 42
+
+paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — không chạm
+  train_split:  data/train_split.json  # tập fit θ
+  questions:    data/public-official.json
+  cache_dir:    data/cache
+  out_dir:      outputs/v0.7_bm25_calib
+
+pipeline:
+  retriever: bm25
+  calibrate:
+    thresholds: 0.712481   # vectơ hằng; fit bằng scripts/fit_calibration.py trên train_split
+    max_count: 5           # trần cứng của BTC, vượt là 0 điểm im lặng
+    min_count: 1
+    scale_rank: 10         # mẫu số = s_1 − s_10, tức bề rộng phổ điểm của chính câu đó
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  bm25:
+    k1: 1.5
+    b: 0.75
+    tokenizer: syllable_bigram
+    tokenizer_opts:
+      fold_tone: true
+      min_len: 1
+    pool: mean_top2
+    pool_tau: 1.0
+    min_df: 1
+    candidate_chunks: 2000   # ⚠️ không trung tính với mean_topN — docs/candidate_cap_check.md
+    n_jobs: 8
+    batch_size: 64

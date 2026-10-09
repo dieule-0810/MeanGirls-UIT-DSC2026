@@ -40,6 +40,17 @@ MODELS: dict[str, dict] = {
         "params": 567_800_000,
         "note": "ô ablation chuyên Việt vs đa ngữ; cùng XLM-R-large nên KHÔNG phải kiến trúc mới",
     },
+    "vi-reranker": {
+        "repo": "AITeamVN/Vietnamese_Reranker",
+        "revision": "f53697624840",
+        "params": 567_800_000,
+        "note": (
+            "fine-tune tiếng Việt TỪ CHÍNH bge-reranker-v2-m3 ⇒ so với 'bge-m3' là phép so "
+            "cùng trọng số gốc, chỉ khác phần fine-tune. ViRanker cũng chuyên Việt nhưng train "
+            "riêng nên lẫn hai biến; ô này tách được biến đó ra. Cùng họ XLM-R-large với "
+            "Vietnamese_Embedding_v2 (configs/models.yaml) ⇒ một tokenizer cho cả embed lẫn rerank."
+        ),
+    },
 }
 
 
@@ -77,6 +88,17 @@ class CrossEncoderReranker:
         self.model.eval().to(self.device)
         if self.fp16:
             self.model.half()
+
+        # `score()` lấy thẳng logits[:, 0]. Với num_labels=1 đó là điểm liên quan; với
+        # num_labels=2 đó là logit lớp KHÔNG liên quan ⇒ thứ hạng bị ĐẢO NGƯỢC, và biểu
+        # hiện duy nhất là recall tụt không rõ lý do. Kiểm một lần lúc nạp, không đoán.
+        n_labels = int(getattr(self.model.config, "num_labels", 1))
+        if n_labels != 1:
+            raise SystemExit(
+                f"❌ {spec['repo']} có num_labels={n_labels}, không phải 1. `score()` đang lấy "
+                f"logits[:, 0] — với model này cột đó không phải điểm liên quan. Sửa `score()` "
+                f"cho đúng quy ước của model rồi mới chạy."
+            )
 
         n = sum(p.numel() for p in self.model.parameters())
         self._torch = torch

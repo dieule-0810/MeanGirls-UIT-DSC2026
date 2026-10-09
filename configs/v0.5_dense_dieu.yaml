@@ -1,0 +1,65 @@
+# v0.5 — Dense bi-encoder trên chunk theo ĐIỀU (`chunks_dieu.jsonl`, 432.142 chunk).
+#
+# VÌ SAO KHÔNG PHẢI chunks.jsonl: embedding đã encode trên Kaggle là của bộ chunk này
+# (log notebook ghi `chunk [0, 54018) / 432142`, vân tay 63c8a431167a99ca6d25917c —
+# tính lại tại chỗ trùng khớp). Và đổi sang nó KHÔNG mất gì, BM25 đo trên dev n=1000:
+#
+#     chunks.jsonl       R@5 0,8555 · R@20 0,9427 · R@50 0,9700
+#     chunks_dieu.jsonl  R@5 0,8547 · R@20 0,9450 · R@50 0,9708
+#
+# Chênh R@5 −0,0008 là nhiễu; trần R@50 còn nhỉnh hơn một chút. Điều kiện bắt buộc là
+# DÙNG NHẤT QUÁN: `hybrid.py` yêu cầu mọi nguồn index CÙNG một danh sách chunk và raise
+# nếu lệch, vì RRF mức chunk cộng điểm theo chỉ số hàng.
+#
+# ⚠️ Những thứ phải làm lại khi đổi bộ chunk, đừng bê số cũ sang:
+#   - BM25 index lại (đã có sẵn ranking: outputs/v0.5_chunk_dieu/dev_top50.json)
+#   - θ của bộ quyết định số lượng doc: fit lại bằng scripts/fit_calibration.py
+#   - `candidate_chunks: 2000` không trung tính với mean_topN (docs/candidate_cap_check.md),
+#     số chunk đổi ⇒ quét lại bằng scripts/check_candidate_cap.py
+exp_id: v0.5_dense_dieu
+seed: 42
+
+paths:
+  chunks:       data/chunks_dieu.jsonl   # ⚠️ KHÁC mặc định của các config khác
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json
+  holdout:      data/holdout.json        # ĐO LẦN CUỐI — không chạm
+  train_split:  data/train_split.json
+  questions:    data/public-official.json
+  embeddings:   data/embeddings.npy
+  out_dir:      outputs/v0.5_dense_dieu
+
+pipeline:
+  retriever: dense
+
+retrieval:
+  top_k_retrieve: 100
+  top_k_submit: 5
+  ranking_full_k: 50
+  dense:
+    # Đúng model đã encode — `DenseRetriever._load_embeddings` so repo/revision trong
+    # meta với hai dòng này và raise nếu lệch. Đổi ở đây mà không encode lại = so cosine
+    # giữa hai không gian vector khác nhau.
+    repo: AITeamVN/Vietnamese_Embedding_v2
+    revision: 18b44161e041bf1d3a333ab5144b5b7b93f914d2
+
+    pooling: cls
+    normalize: true
+    query_prefix: ""        # họ BGE không dùng prefix
+    passage_prefix: ""
+    trust_remote_code: false
+
+    max_length: 512         # khớp lần encode; đổi = phải encode lại toàn corpus
+    batch_size: 32
+    query_batch_size: 64
+    device: auto
+    fp16: true
+
+    pool: mean_top2         # thắng ở BM25; phải đo lại cho dense, đừng mặc định là đúng
+    pool_tau: 1.0
+    candidate_chunks: 2000
+
+bench:
+  pools: [max, mean_top2, mean_top3, logsumexp]
+  recall_at: [5, 20, 50, 100]
+  n_questions: null
