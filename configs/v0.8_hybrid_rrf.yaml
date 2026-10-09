@@ -31,18 +31,15 @@ paths:
   cache_dir:    data/cache
   out_dir:      outputs/v0.8_hybrid_rrf
 
+
 pipeline:
   retriever: hybrid
 
-  rerank:
-    model: vi-reranker
-    mode: rrf
-    depth: 10
-    rrf_k: 60
-    weight_retriever: 0.9
-    device: mps
-    max_length: 512
-    batch_size: 16
+  calibrate:
+    thresholds: 0.502793
+    max_count: 5
+    min_count: 1
+    scale_rank: 10
 
 retrieval:
   top_k_retrieve: 100
