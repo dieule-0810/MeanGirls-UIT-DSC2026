@@ -1,7 +1,6 @@
-"""
-scripts/final_broad_pollution_scan.py
-Quét rộng LẦN CUỐI trên corpus_clean.jsonl trước khi tag release (đổi tên
-file output theo version hiện hành, không hard-code "v0.1").
+"""Quét rác crawler LẦN CUỐI trên toàn corpus_clean.jsonl trước khi tag release.
+
+Đổi tên file output theo version hiện hành, không hard-code "v0.1".
 Không giới hạn độ dài văn bản khi soi (khác các lượt theo dõi thường xuyên trước đó, vốn
 giới hạn <300 từ để lọc bớt false-positive). Ở đây mục đích khác: tìm biến thể rác CHƯA
 từng biết, nên quét toàn bộ, không lọc độ dài, để không bỏ sót file dài mà vẫn dính rác.
@@ -27,10 +26,12 @@ BROAD_KEYWORDS = ["đăng nhập", "mật khẩu", "quý khách", "rời quầy"
 
 
 def already_known(passage_nfc: str) -> bool:
+    """Đoạn văn đã chứa một mẫu rác đã biết."""
     return any(p in passage_nfc for p in KNOWN_PATTERNS)
 
 
 def main():
+    """Điểm vào CLI."""
     corpus_path = Path("data/corpus_clean.jsonl")
     out_path = Path("docs/final_pollution_scan_v0.1.json")
 

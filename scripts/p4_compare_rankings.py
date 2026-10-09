@@ -22,6 +22,7 @@ import json
 
 
 def main() -> int:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--a", required=True, help="bảng xếp hạng A (thường là bản hiện dùng)")
     ap.add_argument("--b", required=True, help="bảng xếp hạng B (bản đối chứng)")

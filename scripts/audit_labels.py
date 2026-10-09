@@ -1,5 +1,4 @@
-"""
-scripts/audit_labels.py — dò nhiễu nhãn trực tiếp trên train.json.
+"""Dò nhiễu nhãn trực tiếp trên train.json.
 
 Chủ sở hữu: P4. KHÔNG phụ thuộc mô hình, chạy được ngay từ Tuần 1.
 
@@ -40,6 +39,7 @@ def norm(s: str) -> str:
 
 
 def load_train() -> dict[str, dict]:
+    """Đọc `train.json` thành `{qid: {question, gold}}`."""
     if not TRAIN.exists():
         sys.exit(f"Không có {TRAIN}")
     raw = json.loads(TRAIN.read_text(encoding="utf-8"))
@@ -129,6 +129,7 @@ def find_overloaded_docs(train: dict) -> list[tuple[str, int]]:
 
 # ────────────────────────────────────────────────────────────────── lệnh ──
 def cmd_scan(train, corpus):
+    """Quét tự động: câu hỏi trùng khớp chính xác nhưng gold khác nhau, và các dấu hiệu nhiễu nhãn khác."""
     n = len(train)
     print(f"train.json: {n:,} câu hỏi\n")
 
@@ -275,6 +276,7 @@ def cmd_sample(train, corpus, k: int, seed: int):
 
 
 def cmd_report():
+    """Tổng hợp file audit thủ công đã điền thành tỉ lệ nhiễu nhãn."""
     path = OUT / "manual_audit.csv"
     if not path.exists():
         sys.exit(f"Chưa có {path} — chạy --sample trước.")
@@ -369,6 +371,7 @@ def cmd_scan_truncated(train, corpus):
 
 
 def main():
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--scan", action="store_true")
     ap.add_argument("--sample", type=int, metavar="N")

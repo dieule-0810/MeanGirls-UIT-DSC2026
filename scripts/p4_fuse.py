@@ -31,11 +31,13 @@ from pathlib import Path
 
 
 def ranks_of(rank: dict, qid: str, limit: int) -> dict[str, int]:
+    """`{doc_id: hạng}` của một câu, cắt `limit`."""
     return {row[0]: i + 1 for i, row in enumerate(rank[qid][:limit])}
 
 
 def fuse(bm25: dict, rr: dict, qids: list[str], w: float, k: int,
          limit: int) -> dict[str, list]:
+    """RRF hai nguồn (BM25, reranker) với trọng số `w` cho mọi câu."""
     out = {}
     for qid in qids:
         rb = ranks_of(bm25, qid, limit)
@@ -53,6 +55,7 @@ def fuse(bm25: dict, rr: dict, qids: list[str], w: float, k: int,
 
 
 def recall_at(rank: dict, questions: dict, k: int) -> float:
+    """Recall@k trung bình."""
     tot = 0.0
     for qid, v in questions.items():
         gold = {str(x) for x in v["answer"]}
@@ -62,6 +65,7 @@ def recall_at(rank: dict, questions: dict, k: int) -> float:
 
 
 def main() -> None:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--bm25", required=True)
     ap.add_argument("--rerank", required=True)

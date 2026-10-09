@@ -33,6 +33,7 @@ CODES = ["R-TERM", "R-SEG", "R-NUM", "R-SHORT", "R-DUP", "R-ENTITY", "N-*", "kha
 
 
 def tier(f: int) -> str:
+    """Tầng tần suất gold trong train (`freq=0`, `1-2`, ...)."""
     if f == 0:
         return "freq=0"
     if f <= 2:
@@ -43,6 +44,7 @@ def tier(f: int) -> str:
 
 
 def main() -> None:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--ranking", required=True)
     ap.add_argument("--questions", required=True)

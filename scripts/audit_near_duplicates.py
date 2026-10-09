@@ -1,5 +1,4 @@
-"""
-scripts/audit_near_duplicates.py — mở rộng phép kiểm nhất quán nhãn.
+"""Mở rộng phép kiểm nhất quán nhãn sang các cặp câu hỏi GẦN trùng.
 
 Vì sao cần: audit_labels.py --scan chỉ khớp CHÍNH XÁC nên chỉ soi được 26/7000
 câu (0,37%). Trên phần soi được, 31% cặp bất đồng gold. Câu hỏi tiếp theo là:
@@ -42,16 +41,19 @@ STOP = {
 
 
 def norm(s: str) -> str:
+    """NFC, chữ thường, bỏ dấu câu, gộp khoảng trắng."""
     s = unicodedata.normalize("NFC", s).lower()
     s = re.sub(r"[^\w\sÀ-ỹ]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
 
 
 def tokens(s: str) -> set[str]:
+    """Tập từ (dài > 1 ký tự) của chuỗi đã chuẩn hoá."""
     return {t for t in norm(s).split() if len(t) > 1}
 
 
 def jaccard(a: set, b: set) -> float:
+    """Hệ số Jaccard của hai tập."""
     if not a or not b:
         return 0.0
     inter = len(a & b)
@@ -59,6 +61,7 @@ def jaccard(a: set, b: set) -> float:
 
 
 def load_train() -> dict[str, dict]:
+    """Đọc `train.json` thành `{qid: {question, gold}}`."""
     if not TRAIN.exists():
         sys.exit(f"Không có {TRAIN}")
     raw = json.loads(TRAIN.read_text(encoding="utf-8"))
@@ -87,6 +90,7 @@ def build_blocks(train: dict, toks: dict) -> dict[str, list[str]]:
 
 
 def find_pairs(train: dict, threshold: float) -> list[dict]:
+    """Cặp câu hỏi có Jaccard ≥ `threshold`, kèm việc hai bên có cùng gold không."""
     toks = {qid: tokens(v["question"]) for qid, v in train.items()}
     idx = build_blocks(train, toks)
 
@@ -119,6 +123,7 @@ def find_pairs(train: dict, threshold: float) -> list[dict]:
 
 
 def main():
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--threshold", type=float, default=0.6,
                     help="ngưỡng Jaccard. 1.0 = trùng hệt. Thử 0.5/0.6/0.7 và so.")

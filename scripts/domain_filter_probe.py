@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Lọc theo LĨNH VỰC trước/sau truy hồi — đo trần trên trước khi cắm. CHỦ SỞ HỮU: P3.
+"""Lọc theo LĨNH VỰC trước/sau truy hồi — đo trần trên trước khi cắm. CHỦ SỞ HỮU: P3.
 
 Ý tưởng: link của mọi văn bản chứa sẵn nhãn lĩnh vực
 (`thuvienphapluat.vn/van-ban/<lĩnh-vực>/…`) — 100% văn bản có, 63 lĩnh vực, lớn nhất chỉ 22%.
@@ -38,6 +37,7 @@ LINK_RE = re.compile(r"thuvienphapluat\.vn/([a-z\-]+)/([a-z\-]+)/")
 
 
 def domain_map(corpus: Path) -> dict[str, str]:
+    """`{doc_id: lĩnh vực}` lấy từ đường dẫn `link`."""
     out: dict[str, str] = {}
     for d in read_jsonl(corpus):
         did = str(d.get("doc_id", d.get("id")))
@@ -47,6 +47,7 @@ def domain_map(corpus: Path) -> dict[str, str]:
 
 
 def recall(preds: dict[str, list[str]], gold: dict[str, list[str]], k: int) -> float:
+    """Recall@k trung bình."""
     tot = 0.0
     for q, g in gold.items():
         if not g:
@@ -56,6 +57,7 @@ def recall(preds: dict[str, list[str]], gold: dict[str, list[str]], k: int) -> f
 
 
 def main() -> int:
+    """Điểm vào CLI: đo trần trên và thiệt hại của lọc lĩnh vực."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ranking", required=True)
     ap.add_argument("--questions", required=True)

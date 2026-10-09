@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""
-Ghép các mảnh `embeddings.shardKofN.npy` (chạy song song trên nhiều tài khoản Kaggle)
-thành một `data/embeddings.npy`. CHỦ SỞ HỮU: P3.
+"""Ghép các mảnh `embeddings.shardKofN.npy` thành một `data/embeddings.npy`. CHỦ SỞ HỮU: P3.
+
+Các mảnh được encode song song trên nhiều tài khoản Kaggle (`docs/kaggle_encode.ipynb`).
 
 Ghép embedding là chỗ dễ hỏng im lặng nhất trong cả pipeline: hai mảnh encode bằng hai model
 khác nhau, hoặc từ hai phiên bản `chunks.jsonl` khác nhau, hoặc thiếu một mảnh ở giữa — ma trận
@@ -31,6 +31,7 @@ import numpy as np  # noqa: E402
 
 
 def main() -> int:
+    """Điểm vào CLI: kiểm meta từng mảnh rồi ghép theo đúng thứ tự."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--shards", required=True, help="thư mục chứa các file *.shardKofN.npy + .meta.json")
     ap.add_argument("--out", default="data/embeddings.npy")

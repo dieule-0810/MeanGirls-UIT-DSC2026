@@ -1,5 +1,5 @@
-"""
-Đếm số tham số thật + lấy revision hash của các model ứng viên.
+"""Đếm số tham số thật và lấy revision hash của các model ứng viên.
+
 Chỉ tải header safetensors (vài KB), KHÔNG tải trọng số.
 
     pip install huggingface_hub
@@ -34,6 +34,7 @@ api = HfApi()
 
 
 def probe(repo_id: str) -> dict:
+    """Đếm tham số từ header safetensors và lấy revision/license của một repo."""
     row = {"model": repo_id, "params": None, "dtypes": "", "sha": "", "license": "", "err": ""}
     try:
         info = api.model_info(repo_id)
@@ -52,6 +53,7 @@ def probe(repo_id: str) -> dict:
 
 
 def render(title: str, repos: list) -> list:
+    """In bảng markdown cho một nhóm model."""
     print(f"\n### {title}\n")
     print("| Model | Tham số | dtype | revision | license | lỗi |")
     print("|---|---:|---|---|---|---|")

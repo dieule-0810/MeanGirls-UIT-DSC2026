@@ -48,6 +48,7 @@ def load_chunk_texts(path: str, need: set[str]) -> dict[str, str]:
 
 
 def recall_at(rank: dict, questions: dict, k: int) -> float:
+    """Recall@k trung bình."""
     tot = 0.0
     for qid, v in questions.items():
         gold = {str(x) for x in v["answer"]}
@@ -57,6 +58,7 @@ def recall_at(rank: dict, questions: dict, k: int) -> float:
 
 
 def main() -> None:
+    """Điểm vào CLI: rerank top-N bằng cross-encoder."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
     ap.add_argument("--ranking", required=True, help="ranking BM25 đầu vào")

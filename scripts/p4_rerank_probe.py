@@ -23,6 +23,7 @@ import statistics
 
 
 def main() -> None:
+    """Điểm vào CLI: probe gold-vs-bừa của reranker."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
     ap.add_argument("--questions", default="data/dev_sub300.json")

@@ -22,6 +22,7 @@ from pathlib import Path
 
 
 def tier(f: int) -> str:
+    """Tầng tần suất gold trong train."""
     if f == 0:
         return "freq=0"
     if f <= 2:
@@ -32,6 +33,7 @@ def tier(f: int) -> str:
 
 
 def main() -> None:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--dev", default="data/dev.json")
     ap.add_argument("--train-split", default="data/train_split.json")

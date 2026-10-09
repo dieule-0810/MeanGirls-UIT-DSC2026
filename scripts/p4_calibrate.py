@@ -89,6 +89,7 @@ def margins(scores: list[float], mode: str, tau: float) -> list[float]:
 def predict(
     ranking: dict, t: float, rule: str, mode: str, tau: float, max_docs: int
 ) -> dict[str, list[str]]:
+    """Áp luật cắt (`rule`, ngưỡng `t`) lên ranking → dự đoán."""
     pred = {}
     for qid, items in ranking.items():
         docs = [d for d, _ in items[:max_docs]]
@@ -130,6 +131,7 @@ def evaluate(pred: dict, questions: dict, max_docs: int) -> tuple[float, float, 
 
 
 def main() -> None:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--ranking", required=True, help="file ranking [[doc_id, score, ...], ...]")
     ap.add_argument("--questions", required=True)

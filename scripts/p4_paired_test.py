@@ -26,6 +26,7 @@ import random
 
 
 def recalls(ranking: dict, questions: dict, k: int) -> dict[str, float]:
+    """Recall@k của từng câu."""
     out = {}
     for qid, v in questions.items():
         gold = {str(a) for a in v["answer"]}
@@ -35,6 +36,7 @@ def recalls(ranking: dict, questions: dict, k: int) -> dict[str, float]:
 
 
 def main() -> None:
+    """Điểm vào CLI: bootstrap cặp + McNemar giữa hai ranking."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--a", required=True, help="ranking A (đường cơ sở)")
     ap.add_argument("--b", required=True, help="ranking B (bản mới)")
