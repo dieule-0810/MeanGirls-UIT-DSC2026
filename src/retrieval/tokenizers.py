@@ -8,7 +8,7 @@ Năm backend cùng giao diện, cùng chuẩn hoá (NFC → tách từ → lower
 * `whitespace` — giữ nguyên cụm dính dấu (số hiệu văn bản không vỡ vụn).
 * `syllable_bigram` — âm tiết + bigram liền kề, xấp xỉ word-segment không cần thư viện.
   Đây là tokenizer của đường nộp bài.
-* `pyvi` / `underthesea` — word-segment thật, cần `pip install -r requirements-p3.txt`.
+* `pyvi` / `underthesea` — word-segment thật (đã nằm trong requirements.txt).
 
 Segment TRƯỚC khi lowercase: pyvi/underthesea dùng chữ hoa làm tín hiệu tên riêng.
 """
@@ -101,7 +101,7 @@ def _segmenter(name: str):
             from pyvi import ViTokenizer
         except ImportError as e:
             raise ImportError(
-                "Cần `pip install -r requirements-p3.txt` để dùng tokenizer 'pyvi'. "
+                "Cần cài `pyvi` (requirements.txt) để dùng tokenizer 'pyvi'. "
                 "Không muốn cài thì dùng 'syllable_bigram' — xấp xỉ word-segment, không cần dependency."
             ) from e
         return lambda t: ViTokenizer.tokenize(t)
@@ -110,7 +110,7 @@ def _segmenter(name: str):
             from underthesea import word_tokenize
         except ImportError as e:
             raise ImportError(
-                "Cần `pip install -r requirements-p3.txt` để dùng tokenizer 'underthesea'. "
+                "Cần cài `underthesea` (requirements.txt) để dùng tokenizer 'underthesea'. "
                 "Không muốn cài thì dùng 'syllable_bigram'."
             ) from e
         return lambda t: word_tokenize(t, format="text")

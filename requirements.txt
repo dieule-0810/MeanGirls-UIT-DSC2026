@@ -1,5 +1,21 @@
-# v0.1 — cố ý tối thiểu. Pin chặt để tái lập được.
-# Sinh lock file thật trước khi nộp:  pip-compile --generate-hashes requirements.txt
+# Pin chặt để tái lập được. Sinh lock file trước khi nộp:
+#   pip-compile --generate-hashes requirements.txt
+
+# Lõi: parse, chunk, BM25, eval
 numpy==1.26.4
 scipy==1.13.1
 PyYAML==6.0.1
+
+# Dense retrieval (v0.8): torch + transformers. Phiên bản đã kiểm trên .venv của team
+# (MacBook M4, Python 3.11.16). Máy CUDA cài torch theo hướng dẫn pytorch.org cho đúng
+# bản CUDA, giữ nguyên các số phiên bản còn lại.
+torch==2.14.0
+transformers==5.17.0
+tokenizers==0.23.2
+safetensors==0.8.0
+huggingface_hub==1.28.0
+
+# Tách từ tiếng Việt — chỉ cần cho lưới benchmark tokenizer (pyvi/underthesea),
+# không nằm trong đường nộp bài (syllable_bigram không dùng thư viện ngoài).
+pyvi==0.1.1
+underthesea==9.5.0

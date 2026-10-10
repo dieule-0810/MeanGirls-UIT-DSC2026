@@ -9,13 +9,12 @@
 
 ```
 Python 3.11 (src/verify_env.py chặn cứng)
-pip install -r requirements.txt          # numpy 1.26.4 · scipy 1.13.1 · PyYAML 6.0.1
-pip install -r requirements-dense.txt    # torch 2.14.0 · transformers 5.17.0 — cần cho v0.8
+pip install -r requirements.txt          # numpy · scipy · torch 2.14.0 · transformers 5.17.0 · pyvi · underthesea
 python scripts/smoke_test.py             # kỳ vọng: 170 passed
 ```
 
-`requirements-p3.txt` (pyvi/underthesea) chỉ cần cho lưới benchmark tokenizer, không cần cho
-đường nộp bài (`syllable_bigram` không dùng thư viện ngoài).
+pyvi/underthesea chỉ cần cho lưới benchmark tokenizer, không cần cho đường nộp bài
+(`syllable_bigram` không dùng thư viện ngoài).
 
 ---
 
