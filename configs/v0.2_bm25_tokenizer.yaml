@@ -7,7 +7,7 @@
 # Giả thuyết H1b: phần lớn mức tăng đó lấy lại được bằng bigram âm tiết, KHÔNG cần dependency.
 # Giả thuyết H2: gộp mean_topN/logsumexp vượt max, vì văn bản đúng khớp ở nhiều điều khoản.
 #
-# Kết quả: docs/bench_v0.2_tokenizer.md — syllable_bigram + mean_top2 thắng (→ v0.3_bm25_best).
+# Kết quả: syllable_bigram + mean_top2 thắng (→ v0.3_bm25_best, `v0.3_bm25_best_sylbigram` trong experiments.csv).
 extends: v0.3_bm25_best.yaml
 exp_id: v0.2_bm25_tok
 

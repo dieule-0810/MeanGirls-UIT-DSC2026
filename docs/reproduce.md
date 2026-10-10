@@ -1,7 +1,7 @@
 # reproduce.md — tái lập kết quả
 
 > Cập nhật 09/10/2026 cho pipeline v0.8. Nguyên tắc: **mọi lệnh ở đây là lệnh ĐÃ CHẠY THẬT**;
-> chỗ nào chưa xác nhận thì ghi rõ. README mục 7–8 là bản rút gọn của tài liệu này.
+> chỗ nào chưa xác nhận thì ghi rõ. README mục *Sử dụng* là bản rút gọn của tài liệu này.
 
 ---
 
@@ -32,8 +32,8 @@ python -m src.data.split_data                            # → holdout/dev/error
 ```
 
 `docs/exclusion_decisions.json` (25 văn bản loại, 11 câu vùng chết, 4 cụm trùng) bị `.gitignore`
-chặn — phải sinh bằng `eda.py` trước `parse_corpus` và `split_data`. `--out` để `eda.py` không ghi
-đè `docs/eda_notes.md` đang được commit.
+chặn — phải sinh bằng `eda.py` trước `parse_corpus` và `split_data`. Báo cáo EDA ghi vào
+`outputs/eda/eda_notes.md`.
 
 **Kỳ vọng** (đã kiểm 09/10/2026):
 
@@ -72,8 +72,10 @@ python -u scripts/encode_corpus.py --config configs/v0.4_dense.yaml --dry-run   
 python -u scripts/encode_corpus.py --config configs/v0.4_dense.yaml --resume
 ```
 
-Hoặc chia 8 mảnh trên 4 tài khoản Kaggle (`docs/kaggle_encode.ipynb`, `docs/runbook_e2e.md`
-giai đoạn 2), rồi `python scripts/merge_embeddings.py`. Kỳ vọng
+Hoặc chia 8 mảnh trên 4 tài khoản Kaggle bằng `docs/kaggle_encode.ipynb` (mỗi tài khoản: import
+notebook, thêm dataset chứa `data/chunks.jsonl`, secret `RCLONE_CONF_B64`, GPU T4 ×2 + Internet ON,
+sửa `SHARDS_THIS_ACCOUNT` rồi *Save & Run All*; chạy lại thì notebook bỏ qua mảnh đã xong), rồi
+`python scripts/merge_embeddings.py`. Kỳ vọng
 `data/embeddings.meta.json`: `n_chunks 432142`, `chunk_fingerprint 9efb4ecf6b194a66d73ed24e`,
 `revision 18b44161e041bf1d3a333ab5144b5b7b93f914d2`.
 
@@ -156,3 +158,15 @@ nhất trong repo ràng một bài nộp vào đầu vào sinh ra nó là kê kh
 **chưa có kê khai** và chưa có tag.
 
 `outputs/v0.2_bm25_tok/` là chạy demo (corpus giả 429 chunk) — không dùng cho kết luận nào.
+
+---
+
+## 6. Sự cố đã gặp
+
+| Triệu chứng | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| `verify_env` báo sai Python | Máy dùng 3.10/3.12 | Tạo venv bằng đúng `python3.11` |
+| `ls data/selected-contexts \| wc -l` ≠ 8532 | Giải nén tạo thêm một cấp thư mục | `mv data/selected-contexts/*/*.json data/selected-contexts/` |
+| `Không tìm thấy docs/exclusion_decisions.json` | File do `scripts/eda.py` sinh, bị `.gitignore` chặn | `python scripts/eda.py --out outputs/eda/eda_notes.md` |
+| `embeddings.npy encode từ MỘT BỘ CHUNK KHÁC` | `chunks.jsonl` dựng bằng chiến lược khác lần encode | Dựng lại bằng `--strategy strict`, hoặc encode lại |
+| Recall ≈ 0 nhưng không có lỗi | `doc_id` bị ép thành int ở đâu đó | Xem `docs/scoring_behaviour.md`; `make_submission.py` lẽ ra đã chặn |

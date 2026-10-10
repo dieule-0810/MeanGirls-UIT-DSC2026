@@ -2,8 +2,8 @@
 """Lưới benchmark BM25 tầng 1: tokenizer × chiến lược gộp chunk→doc. CHỦ SỞ HỮU: P3.
 
 Chấm điểm chunk MỘT lần cho mỗi tokenizer rồi thử mọi chiến lược gộp trên cùng tập ứng viên —
-lưới 5×5 nhưng chỉ 5 lần index. Trả lời H1/H1b/H2 (configs/v0.2_bm25_tokenizer.yaml); kết quả
-đã chốt ở docs/bench_v0.2_tokenizer.md. Metric chính là **Recall@50**, KPI của P3.
+lưới 5×5 nhưng chỉ 5 lần index. Trả lời H1/H1b/H2 (configs/v0.2_bm25_tokenizer.yaml); kết quả:
+syllable_bigram + mean_top2 thắng. Metric chính là **Recall@50**.
 
 Typical usage example:
 

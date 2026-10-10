@@ -36,7 +36,7 @@ retrieval:
     fp16: true              # chỉ áp dụng khi có GPU
     pool: mean_top2
     pool_tau: 1.0
-    candidate_chunks: 2000  # ⚠️ cap KHÔNG trung tính với mean_topN — docs/candidate_cap_check.md
+    candidate_chunks: 2000  # ⚠️ cap KHÔNG trung tính với mean_topN — xem `v0.5_candnull_*` trong experiments.csv
 
 bench:
   pools: [max, mean_top2, mean_top3, logsumexp]

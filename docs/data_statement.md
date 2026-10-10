@@ -17,7 +17,7 @@ Văn bản gốc từ thuvienphapluat.vn (trường `link`) — văn bản quy p
 > Mô hình pretrained **không** bị coi là "dữ liệu từ nguồn khác" (Q&A của BTC): đội thi dùng mô
 > hình ước lượng, không trực tiếp dùng ngữ liệu huấn luyện của chúng.
 
-## Đặc điểm dữ liệu (thống kê thực tế, `docs/eda_notes.md`)
+## Đặc điểm dữ liệu (thống kê thực tế, sinh bằng `scripts/eda.py`)
 
 - Độ dài câu hỏi: trung vị 19 tiếng, p95 31, max 52.
 - Số đáp án/câu: 92,1% có **1** văn bản; 6,9% có 2; tối đa 5.
@@ -52,7 +52,7 @@ bản trùng. `train_1000 ⊂ train_2500 ⊂ train_4689` là các mốc learning
    Điều, mảnh sau gắn nhãn `[Điều N. - tiếp theo]`; văn bản không có Điều thì cắt cửa sổ trượt.
    Bỏ nhãn đi thì mọi chunk là chuỗi con nguyên văn của văn bản gốc.
 
-Đầu ra tất định, xác minh bằng số dòng và SHA-256 ghi trong README mục 8.
+Đầu ra tất định, xác minh bằng số dòng và SHA-256 ghi trong `docs/reproduce.md` mục 1.
 
 ## Quyền riêng tư
 

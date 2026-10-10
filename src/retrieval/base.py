@@ -81,7 +81,7 @@ def pool_scores(
 
     `mean_topN` lấy trung bình trên số chunk THẬT SỰ có trong tập ứng viên, không đệm 0 —
     đệm 0 là phạt oan văn bản ngắn. Hệ quả: `candidate_chunks` KHÔNG trung tính với
-    `mean_topN` (docs/candidate_cap_check.md).
+    `mean_topN` (xem `v0.5_candnull_*` trong experiments.csv).
 
     Args:
         doc_ids: `doc_id` của từng chunk, cùng độ dài với `scores`.

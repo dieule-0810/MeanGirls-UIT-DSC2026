@@ -4,7 +4,7 @@ KẾT QUẢ ĐÃ ĐO: dùng reranker để THAY THẾ thứ hạng làm TỆ R@5
 −0,0252 trên dev, −0,0253 trên holdout) — chỉ dùng ở dạng hợp nhất RRF (`scripts/run_pipeline.py`
 `pipeline.rerank.mode: rrf`). Đường nộp bài v0.8 KHÔNG có tầng này.
 
-Bối cảnh lúc thiết kế (BM25 regex + logsumexp, dev n=1000, docs/stratified_baseline.md):
+Bối cảnh lúc thiết kế (BM25 regex + logsumexp, dev n=1000, `scripts/p4_stratified_recall.py`):
 R@5 0,8067, trần R@50 0,9568 — reranker không bao giờ vượt trần đó. Dư địa lớn nhất ở tầng
 freq>=11: BM25 tìm được luật khung nhưng xếp sai chỗ vì câu hỏi chỉ khác nhau ở token thực thể.
 

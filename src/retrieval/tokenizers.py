@@ -1,7 +1,8 @@
 """Tokenizer tiếng Việt cho BM25 — CHỦ SỞ HỮU: P3.
 
 Năm backend cùng giao diện, cùng chuẩn hoá (NFC → tách từ → lowercase → gộp dấu thanh), khác
-đúng một chỗ là cách cắt từ. Giả thuyết H1/H1b và kết quả đo: docs/bench_v0.2_tokenizer.md.
+đúng một chỗ là cách cắt từ. Giả thuyết H1/H1b: `configs/v0.2_bm25_tokenizer.yaml`; lưới đo:
+`scripts/bench_retrieval.py`.
 
 * `regex` — `\\w+`, mốc tham chiếu v0.1, đừng đổi.
 * `whitespace` — giữ nguyên cụm dính dấu (số hiệu văn bản không vỡ vụn).

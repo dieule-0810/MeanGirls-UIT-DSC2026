@@ -10,7 +10,7 @@ trích dẫn nhau bằng số hiệu ("Nghị định 15/2022/NĐ-CP"), và 88% 
 ở đầu ("Số: 17/2022/TT-BGTVT"). Trích bằng regex ⇒ **0 tham số, 0 model, 0 đăng ký, không đụng
 luật augmentation**, và rơi đúng ô `chien_luoc_du_lieu` của ma trận thực nghiệm (plan.md 0.6).
 
-Nhắm vào hai nhóm lỗi đã có tên trong docs/error_taxonomy.md:
+Nhắm vào hai nhóm lỗi:
   R-DUP       trả về bản GẦN TRÙNG của gold (bản sửa đổi, bản hợp nhất)
   N-CONSOLID  gold trùng nội dung với một văn bản hợp nhất (VBHN) cũng nằm trong kho
 
