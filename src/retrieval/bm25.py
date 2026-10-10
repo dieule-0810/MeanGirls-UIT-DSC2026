@@ -1,4 +1,4 @@
-"""BM25 Okapi trên chunk, khớp `BaseRetriever` (INTERFACES.md §3). CHỦ SỞ HỮU: P3.
+"""BM25 Okapi trên chunk, khớp `BaseRetriever` (INTERFACES.md §3).
 
 Dùng ma trận thưa scipy thay vì `rank_bm25` (vòng lặp Python: giờ thay vì phút trên corpus
 thật). Phần phụ thuộc văn bản của BM25 nhúng sẵn vào ma trận lúc index, nên truy vấn chỉ còn

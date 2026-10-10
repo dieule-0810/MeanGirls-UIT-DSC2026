@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Đồ thị trích dẫn / sửa đổi giữa các văn bản pháp luật. CHỦ SỞ HỮU: P3.
+"""Đồ thị trích dẫn / sửa đổi giữa các văn bản pháp luật.
 
 KHÔNG phải GraphRAG. GraphRAG dùng LLM trích thực thể rồi tóm tắt cụm — với 8.532 văn bản ×
 ~8.535 từ (≈73 triệu từ) thì không khả thi trong ngân sách còn lại, lại cần một model sinh

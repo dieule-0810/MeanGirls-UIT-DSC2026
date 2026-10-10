@@ -1,4 +1,4 @@
-"""Kiểm tra môi trường chạy (phiên bản Python, gói bắt buộc). CHỦ SỞ HỮU: P1 (file KHOÁ).
+"""Kiểm tra môi trường chạy (phiên bản Python, gói bắt buộc).
 
 Lý do tồn tại: BTC clone repo về tháng 10 và chạy. Nếu Python/thư viện lệch, ta muốn
 họ biết sau 2 GIÂY với thông báo rõ ràng, chứ không phải sau 40 phút với một traceback

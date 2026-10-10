@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pipeline end-to-end: `chunks.jsonl` → `predictions.json` → `submission.zip`. CHỦ SỞ HỮU: P3.
+"""Pipeline end-to-end: `chunks.jsonl` → `predictions.json` → `submission.zip`.
 
 Bốn tầng, mỗi tầng bật/tắt độc lập bằng YAML để đo đóng góp riêng (ablation cho bài báo):
 

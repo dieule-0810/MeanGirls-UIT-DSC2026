@@ -1,4 +1,4 @@
-"""Tokenizer tiếng Việt cho BM25 — CHỦ SỞ HỮU: P3.
+"""Tokenizer tiếng Việt cho BM25.
 
 Năm backend cùng giao diện, cùng chuẩn hoá (NFC → tách từ → lowercase → gộp dấu thanh), khác
 đúng một chỗ là cách cắt từ. Giả thuyết H1/H1b: `configs/v0.2_bm25_tokenizer.yaml`; lưới đo:

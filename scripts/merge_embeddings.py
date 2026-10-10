@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ghép các mảnh `embeddings.shardKofN.npy` thành một `data/embeddings.npy`. CHỦ SỞ HỮU: P3.
+"""Ghép các mảnh `embeddings.shardKofN.npy` thành một `data/embeddings.npy`.
 
 Các mảnh được encode song song trên nhiều tài khoản Kaggle (`docs/kaggle_encode.ipynb`).
 

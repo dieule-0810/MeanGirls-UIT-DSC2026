@@ -1,7 +1,5 @@
 """Dò nhiễu nhãn trực tiếp trên train.json.
 
-Chủ sở hữu: P4. KHÔNG phụ thuộc mô hình, chạy được ngay từ Tuần 1.
-
 Vì sao quan trọng: nếu X% nhãn có vấn đề thì Recall trần thật là (1 − X%), và
 mọi nỗ lực đẩy Recall vượt mốc đó là lãng phí. Không ai khác trong team đo được
 con số này, và nó là phát hiện mạnh nhất P4 mang vào bài báo.

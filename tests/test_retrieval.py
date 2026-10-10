@@ -1,8 +1,6 @@
 """
 Kiểm chứng khung tầng 1: hợp đồng `BaseRetriever` + tokenizer tiếng Việt.
 
-CHỦ SỞ HỮU: P3.
-
 Chạy được KHÔNG cần `data/` — corpus giả dựng ngay trong file. Đó là chủ ý: dữ liệu BTC không
 được commit, nên tầng retrieval phải tự kiểm chứng được ở máy sạch, và mọi bất biến ở đây
 (`doc_id` là str, không trùng, sort giảm dần, không quá top_k) là những thứ hỏng ÂM THẦM

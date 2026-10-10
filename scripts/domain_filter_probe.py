@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lọc theo LĨNH VỰC trước/sau truy hồi — đo trần trên trước khi cắm. CHỦ SỞ HỮU: P3.
+"""Lọc theo LĨNH VỰC trước/sau truy hồi — đo trần trên trước khi cắm.
 
 Ý tưởng: link của mọi văn bản chứa sẵn nhãn lĩnh vực
 (`thuvienphapluat.vn/van-ban/<lĩnh-vực>/…`) — 100% văn bản có, 63 lĩnh vực, lớn nhất chỉ 22%.

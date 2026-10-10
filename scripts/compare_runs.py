@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""So hai lần chạy trên cùng tập câu hỏi. CHỦ SỞ HỮU: P3.
+"""So hai lần chạy trên cùng tập câu hỏi.
 
 Câu hỏi thật sự cần trả lời sau khi có dense KHÔNG phải "dense có hơn BM25 không" — mà là
 "dense có tìm được thứ BM25 BỎ SÓT không". Hai hệ ngang điểm nhưng sai ở những câu khác nhau

@@ -1,4 +1,4 @@
-"""Cross-encoder reranker: chấm cặp (câu hỏi, đoạn văn bản) để xếp lại top-K. CHỦ SỞ HỮU: P4.
+"""Cross-encoder reranker: chấm cặp (câu hỏi, đoạn văn bản) để xếp lại top-K.
 
 KẾT QUẢ ĐÃ ĐO: dùng reranker để THAY THẾ thứ hạng làm TỆ R@5 ở cả ba model zero-shot (bge-m3
 −0,0252 trên dev, −0,0253 trên holdout) — chỉ dùng ở dạng hợp nhất RRF (`scripts/run_pipeline.py`
