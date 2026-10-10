@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Đồ thị trích dẫn / sửa đổi giữa các văn bản pháp luật. CHỦ SỞ HỮU: P3.
+"""Đồ thị trích dẫn / sửa đổi giữa các văn bản pháp luật.
 
 KHÔNG phải GraphRAG. GraphRAG dùng LLM trích thực thể rồi tóm tắt cụm — với 8.532 văn bản ×
 ~8.535 từ (≈73 triệu từ) thì không khả thi trong ngân sách còn lại, lại cần một model sinh
@@ -11,7 +10,7 @@ trích dẫn nhau bằng số hiệu ("Nghị định 15/2022/NĐ-CP"), và 88% 
 ở đầu ("Số: 17/2022/TT-BGTVT"). Trích bằng regex ⇒ **0 tham số, 0 model, 0 đăng ký, không đụng
 luật augmentation**, và rơi đúng ô `chien_luoc_du_lieu` của ma trận thực nghiệm (plan.md 0.6).
 
-Nhắm vào hai nhóm lỗi đã có tên trong docs/error_taxonomy.md:
+Nhắm vào hai nhóm lỗi:
   R-DUP       trả về bản GẦN TRÙNG của gold (bản sửa đổi, bản hợp nhất)
   N-CONSOLID  gold trùng nội dung với một văn bản hợp nhất (VBHN) cũng nằm trong kho
 
@@ -35,7 +34,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-import yaml  # noqa: E402
+from src.common.config import load_config  # noqa: E402
 
 from src.common.io import read_jsonl  # noqa: E402
 
@@ -69,7 +68,8 @@ def self_code(doc: dict) -> str | None:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    cfg = yaml.safe_load((REPO / args.config).read_text(encoding="utf-8")) if args.config else {}
+    """Dựng đồ thị trích dẫn/sửa đổi từ corpus và ghi ra file."""
+    cfg = load_config(args.config) if args.config else {}
     corpus_path = REPO / (args.corpus or cfg.get("paths", {}).get("corpus_clean", "data/corpus_clean.jsonl"))
 
     docs = [
@@ -172,8 +172,7 @@ def neighbours(graph: dict, doc_id: str, kinds: set[str], hops: int = 1) -> set[
 
 
 def cmd_probe(args: argparse.Namespace) -> int:
-    """
-    TRẦN TRÊN của ý tưởng, đo trước khi viết một dòng code cắm vào pipeline.
+    """Đo TRẦN TRÊN của ý tưởng trước khi viết một dòng code cắm vào pipeline.
 
     Câu hỏi: trong những câu mà gold KHÔNG nằm trong top-5, có bao nhiêu câu mà gold nằm cách
     top-5 đúng một bước trên đồ thị? Con số đó là tất cả những gì mở rộng theo đồ thị có thể
@@ -234,6 +233,7 @@ def cmd_probe(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    """Điểm vào CLI (`build` | `probe`)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 

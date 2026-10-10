@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Hợp nhất 3 nguồn: BM25 (chunk→doc) + reranker bge-m3 + kNN câu-hỏi-giống-câu-hỏi trên train.
+"""Hợp nhất 3 nguồn: BM25 + reranker bge-m3 + kNN câu-hỏi-giống-câu-hỏi trên train (v0.6). P4.
+
+Đây là chuỗi đã sinh bài nộp private v0.6 (docs/releases/v0.6_private.yaml). Pipeline hiện tại
+là v0.8 (`configs/v0.8_hybrid_rrf.yaml`); nguồn kNN CHƯA được đưa vào `hybrid.py`.
 
 GIẢ THUYẾT (H_kNN). ~70% văn bản vàng của dev/holdout đã từng là văn bản vàng của một câu
 train (dev 0,707 · holdout 0,697). Các câu hỏi về cùng một văn bản dùng lại thuật ngữ của
@@ -32,6 +35,7 @@ import argparse
 import collections
 import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 from src.retrieval.tokenizers import Tokenizer
@@ -40,6 +44,8 @@ TOK = Tokenizer(name="syllable_bigram", fold_tone=True)
 
 
 class QBM25:
+    """BM25 thuần Python trên một kho NHỎ (câu hỏi train) — chỉ mục ngược dạng dict."""
+
     def __init__(self, docs: list[list[str]], k1: float = 1.2, b: float = 0.75):
         self.k1, self.b = k1, b
         self.tf = [collections.Counter(d) for d in docs]
@@ -54,6 +60,7 @@ class QBM25:
                 self.inv[t].append((i, c))
 
     def score(self, q: list[str]) -> dict[int, float]:
+        """Điểm BM25 của mọi câu trong bộ nhớ có chung ít nhất một term với `q`."""
         sc: dict[int, float] = collections.defaultdict(float)
         for t in set(q):
             w = self.idf.get(t)
@@ -65,7 +72,21 @@ class QBM25:
         return sc
 
 
-def knn_doc_scores(bm: QBM25, mem_ids, mem, question, n_neighbors=50, exclude=None):
+def knn_doc_scores(bm: QBM25, mem_ids: list[str], mem: dict, question: str,
+                   n_neighbors: int = 50, exclude: str | None = None) -> dict[str, float]:
+    """Điểm văn bản từ láng giềng: `Σ_j s_j / s_max · [doc ∈ gold_j]` trên top-N câu train giống nhất.
+
+    Args:
+        bm: Chỉ mục BM25 trên câu hỏi của bộ nhớ.
+        mem_ids: qid của bộ nhớ, cùng thứ tự với chỉ mục.
+        mem: Bộ nhớ `{qid: {"question", "answer"}}`.
+        question: Câu hỏi cần tra.
+        n_neighbors: Số láng giềng.
+        exclude: qid loại khỏi láng giềng (chính câu đang hỏi khi đo trên dev/holdout — tránh rò nhãn).
+
+    Returns:
+        `{doc_id: điểm}`.
+    """
     sc = bm.score(TOK(question))
     top = sorted(sc.items(), key=lambda x: -x[1])[:n_neighbors + 1]
     out: dict[str, float] = collections.defaultdict(float)
@@ -79,20 +100,50 @@ def knn_doc_scores(bm: QBM25, mem_ids, mem, question, n_neighbors=50, exclude=No
     return out
 
 
-def fuse_one(bm25_rows, rr_rows, knn, wb, wr, wk, k, bm25_depth, knn_depth):
-    big = 10 ** 6
-    rb = {str(r[0]): i + 1 for i, r in enumerate(bm25_rows[:bm25_depth])}
-    rr = {str(r[0]): i + 1 for i, r in enumerate(rr_rows[:20])} if rr_rows else {}
-    ks = sorted(knn.items(), key=lambda x: -x[1])[:knn_depth]
+@dataclass(frozen=True)
+class FuseParams:
+    """Trọng số và độ sâu của RRF ba nguồn.
+
+    Attributes:
+        wb: Trọng số BM25.
+        wr: Trọng số reranker (0 = không reranker).
+        wk: Trọng số kNN.
+        k: Hằng số RRF.
+        bm25_depth: Số doc BM25 đưa vào.
+        knn_depth: Số doc kNN đưa vào.
+    """
+
+    wb: float = 0.6
+    wr: float = 0.4
+    wk: float = 0.10
+    k: int = 60
+    bm25_depth: int = 50
+    knn_depth: int = 10
+
+
+ABSENT = 10 ** 6  # hạng gán cho doc vắng mặt ở một nguồn (xem hybrid.rrf_from_ranks)
+RERANK_DEPTH = 20
+
+
+def fuse_one(bm25_rows: list, rr_rows: list | None, knn: dict[str, float], p: FuseParams) -> list[list]:
+    """RRF có trọng số của ba nguồn cho MỘT câu; hoà thì giữ thứ tự BM25.
+
+    Returns:
+        `[[doc_id, điểm, ""], ...]` — cùng định dạng ranking của `p4_*`.
+    """
+    rb = {str(r[0]): i + 1 for i, r in enumerate(bm25_rows[: p.bm25_depth])}
+    rr = {str(r[0]): i + 1 for i, r in enumerate(rr_rows[:RERANK_DEPTH])} if rr_rows else {}
+    ks = sorted(knn.items(), key=lambda x: -x[1])[: p.knn_depth]
     rk = {d: i + 1 for i, (d, _) in enumerate(ks)}
     docs = set(rb) | set(rr) | set(rk)
-    sc = {d: wb / (k + rb.get(d, big)) + wr / (k + rr.get(d, big)) + wk / (k + rk.get(d, big))
+    sc = {d: p.wb / (p.k + rb.get(d, ABSENT)) + p.wr / (p.k + rr.get(d, ABSENT)) + p.wk / (p.k + rk.get(d, ABSENT))
           for d in docs}
-    order = sorted(docs, key=lambda d: (-sc[d], rb.get(d, big)))
+    order = sorted(docs, key=lambda d: (-sc[d], rb.get(d, ABSENT)))
     return [[d, sc[d], ""] for d in order]
 
 
-def recall_at(rank, q, kk=5):
+def recall_at(rank: dict, q: dict, kk: int = 5) -> float:
+    """Recall@kk của một ranking `{qid: [[doc_id, ...], ...]}` so với nhãn trong `q`."""
     t = 0.0
     for qid, v in q.items():
         g = {str(x) for x in v["answer"]}
@@ -101,7 +152,8 @@ def recall_at(rank, q, kk=5):
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    """CLI: ba file ranking → ranking đã hợp nhất."""
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--questions", required=True)
     ap.add_argument("--bm25", required=True, help="ranking BM25 top-50 (p4_build_ranking)")
     ap.add_argument("--rerank", default=None, help="ranking bge top-20 (p4_rerank); bỏ trống = không reranker")
@@ -138,11 +190,11 @@ def main() -> int:
     print(f"bộ nhớ kNN: {len(mem_ids)} câu · wb={a.wb} wr={wr} wk={wk} "
           f"knn_depth={a.knn_depth} neighbors={a.neighbors} rrf_k={a.rrf_k}")
 
+    params = FuseParams(a.wb, wr, wk, a.rrf_k, a.bm25_depth, a.knn_depth)
     out = {}
     for qid in qids:
         knn = knn_doc_scores(bm, mem_ids, mem, q[qid]["question"], a.neighbors, exclude=qid)
-        out[qid] = fuse_one(bm25[qid], rr.get(qid), knn, a.wb, wr, wk,
-                            a.rrf_k, a.bm25_depth, a.knn_depth)
+        out[qid] = fuse_one(bm25[qid], rr.get(qid), knn, params)
 
     has_gold = all(q[x].get("answer") for x in qids)
     if has_gold:

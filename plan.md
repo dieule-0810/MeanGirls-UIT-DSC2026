@@ -1,6 +1,10 @@
 # DSC2026 — Task 1 LegalIR: Kế hoạch 6 tuần cho team 4 người
 
 > Bản v4 — cập nhật 12/08/2026, chỉ thêm thông tin về model, không ảnh hưởng nhiều.
+>
+> **Trạng thái 09/10/2026** — tài liệu này là KẾ HOẠCH, giữ nguyên để đối chiếu. Hệ thống thật khác
+> kiến trúc mục 2: không fine-tune bi-encoder, không cross-encoder (zero-shot làm tệ R@5), hợp nhất
+> RRF ở mức doc thay vì chunk. Pipeline hiện tại và số đo: README mục *Phương pháp* / *Kết quả*. Ô `dl_from_scratch` của ma trận mục 0.6 vẫn trống.
 
 ---
 
@@ -83,7 +87,7 @@ int vs str, artefact `\r\n` được phát hiện **giữa chừng lúc code**, 
 câu hỏi 1-đáp-án ở mục 3 cũng ra đời kiểu ad hoc chứ không phải từ một báo cáo EDA có chủ đích.
 
 **Việc**: P2 chạy `scripts/eda.py` (khung có sẵn, xem repo) trên toàn bộ `train.json` +
-`data/selected-contexts/` **trước khi** chỉnh `chunker.py` lần cuối. Output: `docs/eda_notes.md`.
+`data/selected-contexts/` **trước khi** chỉnh `chunker.py` lần cuối. Output: `outputs/eda/eda_notes.md`.
 
 **Tối thiểu phải trả lời**:
 1. Phân bố độ dài văn bản (từ) trong corpus — chunk size 256 token có hợp lý không?
@@ -289,7 +293,7 @@ Vai trò là **trách nhiệm sở hữu**, không phải hàng rào.
 | 4 tài khoản Kaggle, verify phone để mở GPU | Cả team |
 | Xác nhận CodaLab hoạt động, Team Name đúng quy định | P1 |
 | Tải `selected-contexts.zip`, xác nhận đủ 8.532 file, thống kê độ dài passage thật | P2 |
-| **Chạy `scripts/eda.py`, tạo `docs/eda_notes.md`** (xem mục 0.5) | P2 |
+| **Chạy `scripts/eda.py`, tạo `outputs/eda/eda_notes.md`** (xem mục 0.5) | P2 |
 | **Gửi danh sách mô hình xin BTC duyệt** (mục 6) | P1 |
 | Repo Git + `INTERFACES.md` + `.gitignore` + `experiments.csv` (đã có sẵn, xem bộ khung v0.1) | P1 |
 | Đọc `docs/scoring_behaviour.md` — cả 4 người, không ai được bỏ qua | Cả team |
@@ -439,7 +443,7 @@ Cổng mở đến 18/09 nhưng **hạn thực tế là ~10/09**. Đăng ký to�
 - [ ] 4 tài khoản Kaggle đã verify, thấy được GPU quota (cả team)
 - [ ] Xác nhận CodaLab hoạt động, Team Name đúng quy định (P1)
 - [ ] Giải nén `selected-contexts.zip`, xác nhận đủ 8.532 file, thống kê độ dài passage thật (P2)
-- [ ] `docs/eda_notes.md` đã có đủ 7 mục ở 0.5 (P2)
+- [ ] `outputs/eda/eda_notes.md` đã có đủ 7 mục ở 0.5 (P2)
 - [ ] Gửi danh sách mô hình xin duyệt cho BTC (P1)
 - [ ] Repo Git khởi tạo, MIT license, `experiments.csv` trống (P1)
 - [ ] **Submission giả nộp thành công, thấy điểm trên leaderboard** (P1)

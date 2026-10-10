@@ -31,6 +31,7 @@ from pathlib import Path
 
 
 def main() -> int:
+    """Điểm vào CLI: ranking → `predictions.json` (top-5)."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--ranking", required=True)
     ap.add_argument("--questions", required=True)

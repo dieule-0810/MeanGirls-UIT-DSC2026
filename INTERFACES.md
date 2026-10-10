@@ -30,14 +30,16 @@ biết tại sao. Vì vậy:
 
 ## 1. `corpus_clean.jsonl` — P2 sản xuất
 
-Một dòng = một văn bản. **8.532 dòng, không hơn không kém.**
+Một dòng = một văn bản. **8.507 dòng** = 8.532 file thô − 25 văn bản loại trừ (20 rỗng + 5 trùng-dư,
+danh sách trong `docs/exclusion_decisions.json` do `scripts/eda.py` sinh). Sửa 09/10/2026: bản
+chốt 07/08 ghi 8.532 vì quyết định loại trừ có sau (20/08).
 
 ```jsonc
 {
   "doc_id": "740",          // str, BẮT BUỘC. Lấy từ trường `id`, ép str.
-  "name": "Quyet-dinh-...", // str | null. context_69.json THIẾU trường này → dùng .get()
-  "link": "https://...",    // str | null
-  "text": "BỘ Y TẾ ..."     // str, đã normalize, đã bỏ boilerplate
+  "name": "Quyet-dinh-...", // str; thiếu trong file thô (13,2%, vd context_69.json) → ""
+  "link": "https://...",    // str, chữ thường; thiếu → ""
+  "text": "BỘ Y TẾ ..."     // str, NFC, khoảng trắng kéo phẳng, đã chặt rác crawler
 }
 ```
 
@@ -61,7 +63,9 @@ Một dòng = một chunk.
 }
 ```
 
-Sinh bởi: `python -m src.data.chunker`
+Sinh bởi: `python -m src.data.chunker --strategy strict --out data/chunks.jsonl` (432.142 chunk, kho của
+pipeline v0.8). Chiến lược mặc định `loose` sinh kho 524.422 chunk mà các số v0.1–v0.6 đã đo — cùng
+định dạng, khác nội dung; xem docs/reproduce.md mục 1.
 
 > `chunk_id` tách bằng `::` chứ không phải `_` vì `doc_id` là số và ta cần tách ngược được chắc chắn.
 
@@ -165,16 +169,21 @@ như bug). Không ai được "sửa cho hợp lý". Nếu thấy chỗ nào l�
 ## 6. Config
 
 Một file YAML cho mỗi thí nghiệm, đặt trong `configs/`. **Không hằng số hard-code trong code.**
-Mọi script nhận `--config configs/xxx.yaml`.
+Mọi script nhận `--config configs/xxx.yaml` và đọc bằng `src.common.config.load_config()` (bổ sung
+09/10/2026): config chỉ ghi phần KHÁC với config nó kế thừa.
 
 ```yaml
-exp_id: v0.1_bm25          # trùng tên file, ghi vào experiments.csv
-seed: 42
+extends: v0.3_bm25_best.yaml   # kế thừa cả file (đường dẫn tương đối so với file này)
+exp_id: v0.5_cand_null         # trùng tên file, ghi vào experiments.csv
 paths:
-  corpus_raw: data/selected-contexts
-  corpus_clean: data/corpus_clean.jsonl
-  chunks: data/chunks.jsonl
+  out_dir: outputs/v0.5_cand
+retrieval:
+  bm25:
+    candidate_chunks: null     # gộp ĐỆ QUY: chỉ khoá này đổi, phần còn lại của khối bm25 giữ nguyên
 ```
+
+`extends: file.yaml#a.b` kế thừa một nhánh con (nguồn của hybrid dùng cách này). `null` là giá trị
+thật, không phải "xoá khoá". Phần chung (`paths`, `top_k_*`, `seed`) nằm ở `configs/base.yaml`.
 
 ---
 

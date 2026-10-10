@@ -1,14 +1,14 @@
-"""
-Tokenizer tiếng Việt cho BM25 (plan.md mục 4) — CHỦ SỞ HỮU: P3.
+"""Tokenizer tiếng Việt cho BM25.
 
-5 backend cùng giao diện, cùng chuẩn hoá (NFC → tách từ → lowercase → gộp dấu thanh),
-khác đúng một chỗ — cách cắt từ. Vì sao có cả word-segment lẫn âm tiết thuần, và giả thuyết
-đo được gì: docs/retrieval.md mục 2 (H1/H1b).
+Năm backend cùng giao diện, cùng chuẩn hoá (NFC → tách từ → lowercase → gộp dấu thanh), khác
+đúng một chỗ là cách cắt từ. Giả thuyết H1/H1b: `configs/v0.2_bm25_tokenizer.yaml`; lưới đo:
+`scripts/bench_retrieval.py`.
 
-  regex              `\\w+`, mốc tham chiếu v0.1, đừng đổi.
-  whitespace         giữ nguyên cụm dính dấu (số hiệu văn bản không vỡ vụn).
-  syllable_bigram    âm tiết + bigram liền kề, xấp xỉ word-segment không cần thư viện.
-  pyvi / underthesea word-segment thật, cần `pip install -r requirements-p3.txt`.
+* `regex` — `\\w+`, mốc tham chiếu v0.1, đừng đổi.
+* `whitespace` — giữ nguyên cụm dính dấu (số hiệu văn bản không vỡ vụn).
+* `syllable_bigram` — âm tiết + bigram liền kề, xấp xỉ word-segment không cần thư viện.
+  Đây là tokenizer của đường nộp bài.
+* `pyvi` / `underthesea` — word-segment thật, cần `pip install -r requirements-p3.txt`.
 
 Segment TRƯỚC khi lowercase: pyvi/underthesea dùng chữ hoa làm tín hiệu tên riêng.
 """
@@ -17,8 +17,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import pickle
-import sys
 import re
+import sys
 import time
 import unicodedata
 from dataclasses import dataclass, replace
@@ -38,7 +38,10 @@ TOKENIZER_NAMES = BUILTIN_TOKENIZERS + SEGMENTER_TOKENIZERS
 # Chuẩn hoá chính tả tiếng Việt
 # ─────────────────────────────────────────────────────────────────────────────
 def _build_tone_fold_map() -> dict[str, str]:
-    """"hoà"↔"hòa" là cùng một từ, khác byte → hai term với BM25. Quy về một dạng cho oa/oe/uy."""
+    """Bảng quy dấu thanh oa/oe/uy về một kiểu.
+
+    "hoà" và "hòa" là cùng một từ nhưng khác byte, tức hai term với BM25.
+    """
     tones = {
         "o": "òóỏõọ",
         "u": "ùúủũụ",
@@ -59,7 +62,14 @@ _TONE_FOLD_RE = re.compile(r"(?<!q)u[ỳýỷỹỵ]|o[àáảãạèéẻẽẹ
 
 
 def fold_tone_placement(text: str) -> str:
-    """Quy vị trí dấu thanh của oa/oe/uy về một kiểu. Giả định đầu vào đã NFC + lowercase."""
+    """Quy vị trí dấu thanh của oa/oe/uy về một kiểu.
+
+    Args:
+        text: Văn bản đã NFC và lowercase.
+
+    Returns:
+        Văn bản đã quy dấu ("hòa" → "hoà"); "quý", "quỷ" giữ nguyên.
+    """
     return _TONE_FOLD_RE.sub(lambda m: _TONE_FOLD_MAP[m.group(0)], text)
 
 
@@ -67,7 +77,11 @@ def fold_tone_placement(text: str) -> str:
 # Backend tách từ (nạp lười, chỉ khi được gọi)
 # ─────────────────────────────────────────────────────────────────────────────
 def available_tokenizers() -> dict[str, bool]:
-    """{tên: đã cài chưa} — để bench bỏ qua backend thiếu thay vì chết giữa lưới."""
+    """Backend nào dùng được trên máy này.
+
+    Returns:
+        `{tên: đã cài chưa}` — để bench bỏ qua backend thiếu thay vì chết giữa lưới.
+    """
     out = {name: True for name in BUILTIN_TOKENIZERS}
     for name in SEGMENTER_TOKENIZERS:
         out[name] = importlib.util.find_spec(name) is not None
@@ -76,7 +90,12 @@ def available_tokenizers() -> dict[str, bool]:
 
 @lru_cache(maxsize=None)
 def _segmenter(name: str):
-    """Nạp một lần cho mỗi tiến trình (quan trọng khi chạy multiprocessing)."""
+    """Nạp segmenter một lần cho mỗi tiến trình (quan trọng khi chạy multiprocessing).
+
+    Raises:
+        ImportError: Chưa cài thư viện tương ứng.
+        KeyError: Tên không phải segmenter.
+    """
     if name == "pyvi":
         try:
             from pyvi import ViTokenizer
@@ -103,7 +122,17 @@ def _segmenter(name: str):
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class Tokenizer:
-    """Pickle được (chỉ tên + tuỳ chọn, backend nạp lười) → dùng được với multiprocessing."""
+    """Tokenizer có cấu hình, gọi được như hàm: `tok(text) -> list[str]`.
+
+    Pickle được (chỉ giữ tên + tuỳ chọn, backend nạp lười) nên dùng được với multiprocessing.
+
+    Attributes:
+        name: Tên backend.
+        lowercase: Đưa về chữ thường.
+        fold_tone: Quy dấu thanh oa/oe/uy về một kiểu.
+        min_len: Bỏ token ngắn hơn.
+        keep_syllables: Với `syllable_bigram`, giữ cả âm tiết đơn bên cạnh bigram.
+    """
 
     name: str = "regex"
     lowercase: bool = True
@@ -112,6 +141,7 @@ class Tokenizer:
     keep_syllables: bool = True  # chỉ có nghĩa với syllable_bigram
 
     def __post_init__(self) -> None:
+        """Kiểm tên backend và `min_len`."""
         if self.name not in TOKENIZER_NAMES:
             raise ValueError(
                 f"Tokenizer '{self.name}' không tồn tại. Có: {', '.join(TOKENIZER_NAMES)}"
@@ -122,6 +152,7 @@ class Tokenizer:
     # ── định danh: đi vào tên file cache và vào experiments.csv ──
     @property
     def key(self) -> str:
+        """Định danh duy nhất của cấu hình — đi vào tên file cache và log."""
         bits = [self.name]
         if not self.lowercase:
             bits.append("nolower")
@@ -138,13 +169,14 @@ class Tokenizer:
 
     # ── ba bước, dùng chung cho mọi backend ──
     def _segment(self, text: str) -> str:
-        """NFC rồi tách từ nếu backend có — giữ nguyên chữ hoa cho segmenter."""
+        """NFC rồi tách từ nếu backend là segmenter (giữ nguyên chữ hoa cho segmenter)."""
         text = unicodedata.normalize("NFC", text)
         if self.name in SEGMENTER_TOKENIZERS:
             return _segmenter(self.name)(text)
         return text
 
     def _normalize(self, text: str) -> str:
+        """Lowercase và quy dấu thanh theo cấu hình."""
         if self.lowercase:
             text = text.lower()
         if self.fold_tone:
@@ -152,6 +184,7 @@ class Tokenizer:
         return text
 
     def _extract(self, text: str) -> list[str]:
+        """Cắt văn bản đã chuẩn hoá thành token theo backend."""
         if self.name == "whitespace":
             # Tách theo khoảng trắng, chỉ gọt dấu câu hai đầu — giữ nguyên "03/2020/tt-btc".
             toks = []
@@ -175,6 +208,7 @@ class Tokenizer:
         return WORD_RE.findall(text)
 
     def __call__(self, text: str) -> list[str]:
+        """Tách một văn bản thành danh sách token (đã `sys.intern`)."""
         toks = self._extract(self._normalize(self._segment(text)))
         if self.min_len > 1:
             toks = [t for t in toks if len(t) >= self.min_len]
@@ -183,11 +217,20 @@ class Tokenizer:
         return [sys.intern(t) for t in toks]
 
     def batch(self, texts: Sequence[str]) -> list[list[str]]:
+        """Tách nhiều văn bản, tuần tự."""
         return [self(t) for t in texts]
 
 
 def get_tokenizer(name: str | Tokenizer = "regex", **opts) -> Tokenizer:
-    """`get_tokenizer("pyvi", fold_tone=False)` hoặc truyền thẳng một Tokenizer để override."""
+    """Dựng tokenizer theo tên, hoặc ghi đè tuỳ chọn của một tokenizer có sẵn.
+
+    Args:
+        name: Tên backend hoặc một `Tokenizer`.
+        **opts: Trường của `Tokenizer` cần đặt, vd `fold_tone=False`.
+
+    Returns:
+        `Tokenizer` mới (bất biến).
+    """
     if isinstance(name, Tokenizer):
         return replace(name, **opts) if opts else name
     return Tokenizer(name=name, **opts)
@@ -200,16 +243,19 @@ _WORKER_TOKENIZER: Tokenizer | None = None
 
 
 def _worker_init(tok: Tokenizer) -> None:  # pragma: no cover - chạy trong tiến trình con
+    """Khởi tạo tiến trình con với tokenizer dùng chung."""
     global _WORKER_TOKENIZER
     _WORKER_TOKENIZER = tok
 
 
 def _worker_run(texts: list[str]) -> list[list[str]]:  # pragma: no cover
+    """Tách từ một khối văn bản trong tiến trình con."""
     assert _WORKER_TOKENIZER is not None
     return _WORKER_TOKENIZER.batch(texts)
 
 
 def _cache_key(tok: Tokenizer, texts: Sequence[str]) -> str:
+    """Băm cấu hình tokenizer + toàn bộ nội dung văn bản → khoá cache."""
     h = hashlib.blake2b(digest_size=12)
     h.update(tok.key.encode("utf-8"))
     h.update(str(len(texts)).encode("utf-8"))
@@ -217,6 +263,19 @@ def _cache_key(tok: Tokenizer, texts: Sequence[str]) -> str:
         h.update(t.encode("utf-8", "ignore"))
         h.update(b"\0")
     return h.hexdigest()
+
+
+def _tokenize_parallel(texts: Sequence[str], tok: Tokenizer, n_jobs: int) -> list[list[str]]:
+    """Tách từ theo khối trên `n_jobs` tiến trình, giữ nguyên thứ tự."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    block = max(200, len(texts) // (n_jobs * 8) + 1)
+    blocks = [list(texts[i : i + block]) for i in range(0, len(texts), block)]
+    out: list[list[str]] = []
+    with ProcessPoolExecutor(max_workers=n_jobs, initializer=_worker_init, initargs=(tok,)) as ex:
+        for part in ex.map(_worker_run, blocks):
+            out.extend(part)
+    return out
 
 
 def tokenize_many(
@@ -227,42 +286,39 @@ def tokenize_many(
     cache_dir: str | Path | None = None,
     verbose: bool = True,
 ) -> list[list[str]]:
+    """Tách từ cho cả kho, có cache đĩa và đa tiến trình.
+
+    Cache khoá theo NỘI DUNG văn bản + cấu hình tokenizer, nên đổi chunker là cache tự hết hiệu
+    lực. Cần vì underthesea/pyvi tách 500k chunk mất hàng chục phút và bench chạy lại nhiều lần.
+
+    Args:
+        texts: Văn bản cần tách.
+        tok: Tokenizer.
+        n_jobs: Số tiến trình; chỉ dùng khi > 1 và có trên 1.000 văn bản.
+        cache_dir: Thư mục cache; None = không cache.
+        verbose: In thống kê.
+
+    Returns:
+        Danh sách token của từng văn bản, cùng thứ tự `texts`.
     """
-    Tách từ cho cả corpus. Cache theo nội dung (P2 đổi chunker → cache tự hết hiệu lực),
-    vì underthesea/pyvi tách 500k+ chunk mất hàng chục phút và bench chạy lại nhiều lần.
-    """
-    cache_path: Path | None = None
-    if cache_dir is not None:
-        cache_path = Path(cache_dir) / f"tokens_{tok.key}_{_cache_key(tok, texts)}.pkl"
-        if cache_path.exists():
-            if verbose:
-                print(f"  [tok] dùng cache {cache_path.name}")
-            with cache_path.open("rb") as fh:
-                return pickle.load(fh)
+    cache_path = Path(cache_dir) / f"tokens_{tok.key}_{_cache_key(tok, texts)}.pkl" if cache_dir else None
+    if cache_path is not None and cache_path.exists():
+        if verbose:
+            print(f"  [tok] dùng cache {cache_path.name}")
+        with cache_path.open("rb") as fh:
+            return pickle.load(fh)
 
     t0 = time.perf_counter()
     if n_jobs and n_jobs > 1 and len(texts) > 1000:
-        from concurrent.futures import ProcessPoolExecutor
-
-        block = max(200, len(texts) // (n_jobs * 8) + 1)
-        blocks = [list(texts[i : i + block]) for i in range(0, len(texts), block)]
-        out: list[list[str]] = []
-        with ProcessPoolExecutor(
-            max_workers=n_jobs, initializer=_worker_init, initargs=(tok,)
-        ) as ex:
-            for part in ex.map(_worker_run, blocks):
-                out.extend(part)
+        out = _tokenize_parallel(texts, tok, n_jobs)
     else:
         out = tok.batch(texts)
-    dt = time.perf_counter() - t0
-
     if verbose:
-        n_tok = sum(len(t) for t in out)
+        n_tok = sum(len(x) for x in out)
         print(
             f"  [tok] {tok.key}: {len(texts)} văn bản → {n_tok} token "
-            f"({n_tok / max(1, len(texts)):.1f} token/văn bản) trong {dt:.1f}s"
+            f"({n_tok / max(1, len(texts)):.1f} token/văn bản) trong {time.perf_counter() - t0:.1f}s"
         )
-
     if cache_path is not None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with cache_path.open("wb") as fh:

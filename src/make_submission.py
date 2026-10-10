@@ -1,16 +1,14 @@
-"""
-Sinh submission.zip. Đây là chốt chặn cuối cùng trước CodaLab.
+"""Sinh `submission.zip` — chốt chặn cuối cùng trước CodaLab.
 
-⚠️ CHỦ SỞ HỮU: P1. Không sửa trực tiếp — báo P1.
+⚠️ Triết lý FAIL LOUD: mọi thứ mã chấm BTC xử lý im lặng (hoặc
+crash) đều bị chặn ở đây, tại chỗ, với thông báo nói rõ phải sửa gì (docs/scoring_behaviour.md).
 
-Triết lý: FAIL LOUD. Mọi thứ mã chấm của BTC xử lý im lặng (hoặc crash) đều bị chặn ở đây,
-tại chỗ, với thông báo nói rõ phải sửa gì. Xem docs/scoring_behaviour.md.
+Typical usage example:
 
-Dùng:
-    python -m src.make_submission \
-        --preds outputs/v0.1_bm25/predictions.json \
-        --questions data/public-official.json \
-        --out outputs/v0.1_bm25/submission.zip \
+    python -m src.make_submission \\
+        --preds outputs/v0.8_hybrid_rrf/predictions.json \\
+        --questions data/private-official.json \\
+        --out outputs/v0.8_hybrid_rrf/submission.zip \\
         --corpus data/corpus_clean.jsonl
 """
 from __future__ import annotations
@@ -18,14 +16,46 @@ from __future__ import annotations
 import argparse
 import json
 import zipfile
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from src.common.io import load_corpus_ids
 
 MAX_ANSWERS = 5
 SUBMISSION_FILENAME = "submission.json"  # tên do BTC quy định, không đổi
 
 
+@dataclass
+class _CleanStats:
+    """Đếm những gì đã phải sửa khi làm sạch dự đoán — để in cảnh báo."""
+
+    n_deduped: int = 0
+    n_truncated: int = 0
+    n_empty: int = 0
+    unknown_ids: set[str] = field(default_factory=set)
+
+    def warnings(self) -> list[str]:
+        """Các dòng cảnh báo cần in."""
+        out = []
+        if self.n_deduped:
+            out.append(f"⚠️  {self.n_deduped} câu có doc_id trùng, đã khử.")
+        if self.n_truncated:
+            out.append(f"⚠️  {self.n_truncated} câu bị cắt còn {MAX_ANSWERS} doc.")
+        if self.n_empty:
+            out.append(f"🔴 {self.n_empty} câu trả về RỖNG → chắc chắn 0 điểm cho các câu đó.")
+        if self.unknown_ids:
+            out.append(
+                f"🔴 {len(self.unknown_ids)} doc_id không tồn tại trong corpus "
+                f"(vd {sorted(self.unknown_ids)[:3]}) → nhiều khả năng có bug."
+            )
+        return out
+
+
 def dedupe_keep_order(items: list) -> list[str]:
-    """Khử trùng lặp, GIỮ NGUYÊN thứ tự xếp hạng. Ép str tại đây."""
+    """Khử trùng lặp, GIỮ NGUYÊN thứ tự xếp hạng, ép `str` tại đây.
+
+    Mã chấm không khử trùng: mẫu số precision và giới hạn 5 đều đếm theo list.
+    """
     seen, out = set(), []
     for d in items:
         s = str(d)
@@ -35,37 +65,31 @@ def dedupe_keep_order(items: list) -> list[str]:
     return out
 
 
-def build_submission(
-    preds: dict[str, list],
-    expected_qids: set[str],
-    corpus_ids: set[str] | None = None,
-    fill_missing: bool = False,
-) -> dict[str, dict[str, list[str]]]:
-    """
-    preds         : {qid: [doc_id, ...]} — đã xếp hạng, chưa cần dedupe/cắt
-    expected_qids : tập qid của file câu hỏi. Phải khớp CHÍNH XÁC.
-    """
-    errors: list[str] = []
-    warnings: list[str] = []
+def _check_qids(preds: dict[str, list], expected_qids: set[str], fill_missing: bool) -> list[str]:
+    """Đối chiếu tập qid; điền list rỗng cho câu thiếu nếu `fill_missing` (sửa `preds` tại chỗ).
 
-    preds = {str(k): v for k, v in preds.items()}
+    Returns:
+        Cảnh báo cần in.
 
+    Raises:
+        SystemExit: Thiếu qid (khi không `fill_missing`) hoặc thừa qid — ở BTC là crash.
+    """
+    errors, warnings = [], []
     missing = expected_qids - set(preds)
     extra = set(preds) - expected_qids
-    if missing:
-        if fill_missing:
-            warnings.append(
-                f"⚠️  {len(missing)} câu thiếu dự đoán, đã điền list rỗng. "
-                f"Các câu này chắc chắn 0 điểm — chỉ dùng khi debug, KHÔNG dùng để nộp thật."
-            )
-            for q in missing:
-                preds[q] = []
-        else:
-            errors.append(
-                f"THIẾU {len(missing)} câu hỏi (vd {sorted(missing)[:3]}). "
-                f"BTC sẽ raise Exception → submission FAILED, mất một lượt nộp. "
-                f"Dùng --fill-missing nếu đang debug."
-            )
+    if missing and fill_missing:
+        warnings.append(
+            f"⚠️  {len(missing)} câu thiếu dự đoán, đã điền list rỗng. "
+            f"Các câu này chắc chắn 0 điểm — chỉ dùng khi debug, KHÔNG dùng để nộp thật."
+        )
+        for q in missing:
+            preds[q] = []
+    elif missing:
+        errors.append(
+            f"THIẾU {len(missing)} câu hỏi (vd {sorted(missing)[:3]}). "
+            f"BTC sẽ raise Exception → submission FAILED, mất một lượt nộp. "
+            f"Dùng --fill-missing nếu đang debug."
+        )
     if extra:
         errors.append(
             f"THỪA {len(extra)} qid không có trong file câu hỏi (vd {sorted(extra)[:3]}). "
@@ -73,26 +97,33 @@ def build_submission(
         )
     if errors:
         raise SystemExit("❌ KHÔNG THỂ TẠO SUBMISSION:\n  - " + "\n  - ".join(errors))
+    return warnings
 
+
+def _clean_answers(
+    preds: dict[str, list], expected_qids: set[str], corpus_ids: set[str] | None
+) -> tuple[dict[str, dict[str, list[str]]], _CleanStats]:
+    """Dedupe giữ thứ tự, cắt 5, bọc `{"answer": [...]}` cho từng câu."""
     out: dict[str, dict[str, list[str]]] = {}
-    n_truncated = n_deduped = n_empty = 0
-    unknown_ids: set[str] = set()
-
+    stats = _CleanStats()
     for qid in expected_qids:
         docs = preds[qid]
         clean = dedupe_keep_order(docs)
         if len(clean) < len(docs):
-            n_deduped += 1
+            stats.n_deduped += 1
         if len(clean) > MAX_ANSWERS:
-            n_truncated += 1
+            stats.n_truncated += 1
             clean = clean[:MAX_ANSWERS]
         if not clean:
-            n_empty += 1
+            stats.n_empty += 1
         if corpus_ids is not None:
-            unknown_ids |= {d for d in clean if d not in corpus_ids}
+            stats.unknown_ids |= {d for d in clean if d not in corpus_ids}
         out[qid] = {"answer": clean}
+    return out, stats
 
-    # ── Assert cuối, sau khi đã dựng xong. Không tin bước nào ở trên. ──
+
+def _assert_submission(out: dict, expected_qids: set[str]) -> None:
+    """Assert cuối, sau khi đã dựng xong — không tin bước nào ở trên."""
     assert len(out) == len(expected_qids), "Số câu hỏi không khớp sau khi dựng"
     for qid, v in out.items():
         assert isinstance(qid, str), f"qid {qid!r} không phải str"
@@ -102,47 +133,69 @@ def build_submission(
         assert len(a) == len(set(a)), f"{qid}: còn trùng lặp"
         for d in a:
             assert isinstance(d, str), (
-                f"{qid}: doc_id {d!r} kiểu {type(d).__name__}, phải là str. "
-                f"BTC sẽ cho 0 điểm IM LẶNG."
+                f"{qid}: doc_id {d!r} kiểu {type(d).__name__}, phải là str. BTC sẽ cho 0 điểm IM LẶNG."
             )
 
-    if n_deduped:
-        warnings.append(f"⚠️  {n_deduped} câu có doc_id trùng, đã khử.")
-    if n_truncated:
-        warnings.append(f"⚠️  {n_truncated} câu bị cắt còn {MAX_ANSWERS} doc.")
-    if n_empty:
-        warnings.append(f"🔴 {n_empty} câu trả về RỖNG → chắc chắn 0 điểm cho các câu đó.")
-    if unknown_ids:
-        warnings.append(
-            f"🔴 {len(unknown_ids)} doc_id không tồn tại trong corpus "
-            f"(vd {sorted(unknown_ids)[:3]}) → nhiều khả năng có bug."
-        )
-    for w in warnings:
-        print(w)
 
+def build_submission(
+    preds: dict[str, list],
+    expected_qids: set[str],
+    corpus_ids: set[str] | None = None,
+    fill_missing: bool = False,
+) -> dict[str, dict[str, list[str]]]:
+    """Dựng nội dung `submission.json` đã kiểm mọi bẫy của mã chấm.
+
+    Args:
+        preds: `{qid: [doc_id, ...]}` đã xếp hạng, chưa cần dedupe/cắt.
+        expected_qids: Tập qid của file câu hỏi. Phải khớp CHÍNH XÁC.
+        corpus_ids: Tập doc_id của corpus để cảnh báo id lạ; None = bỏ qua.
+        fill_missing: Điền list rỗng cho câu thiếu — CHỈ dùng khi debug.
+
+    Returns:
+        `{qid: {"answer": [doc_id, ...]}}`, mỗi câu tối đa 5 doc, không trùng, toàn str.
+
+    Raises:
+        SystemExit: Tập qid không khớp.
+        AssertionError: Kết quả vi phạm bất biến (lưới an toàn cuối).
+    """
+    preds = {str(k): v for k, v in preds.items()}
+    warnings = _check_qids(preds, expected_qids, fill_missing)
+    out, stats = _clean_answers(preds, expected_qids, corpus_ids)
+    _assert_submission(out, expected_qids)
+    for w in warnings + stats.warnings():
+        print(w)
     return out
 
 
 def write_zip(submission: dict, out_path: str | Path) -> Path:
-    """Ghi submission.json ở GỐC zip. Không thư mục con."""
+    """Ghi `submission.json` ở GỐC zip (không thư mục con) rồi đọc ngược lại để xác minh.
+
+    Args:
+        submission: Kết quả `build_submission`.
+        out_path: Đường dẫn file zip.
+
+    Returns:
+        Đường dẫn đã ghi.
+
+    Raises:
+        AssertionError: Zip chứa thứ khác ngoài `submission.json`, hoặc nội dung đọc lại lệch.
+    """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(submission, ensure_ascii=False, indent=1)
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(SUBMISSION_FILENAME, payload)
 
-    # Đọc ngược lại từ zip để xác minh, không tin biến trong RAM
     with zipfile.ZipFile(out_path) as zf:
         names = zf.namelist()
-        assert names == [SUBMISSION_FILENAME], (
-            f"Zip phải chứa DUY NHẤT {SUBMISSION_FILENAME}, thực tế: {names}"
-        )
+        assert names == [SUBMISSION_FILENAME], f"Zip phải chứa DUY NHẤT {SUBMISSION_FILENAME}, thực tế: {names}"
         back = json.loads(zf.read(SUBMISSION_FILENAME).decode("utf-8"))
     assert back == submission, "Nội dung zip không khớp sau khi ghi"
     return out_path
 
 
 def main() -> int:
+    """CLI: `predictions.json` → `submission.zip` an toàn."""
     ap = argparse.ArgumentParser(description="Tạo submission.zip an toàn cho CodaLab.")
     ap.add_argument("--preds", required=True, help="{qid: [doc_id]} đã xếp hạng")
     ap.add_argument("--questions", required=True, help="public-official.json / private-official.json")
@@ -154,31 +207,11 @@ def main() -> int:
     preds = json.loads(Path(args.preds).read_text(encoding="utf-8"))
     if preds and isinstance(next(iter(preds.values())), dict):
         preds = {k: v["answer"] for k, v in preds.items()}
-
-    questions = json.loads(Path(args.questions).read_text(encoding="utf-8"))
-    expected = {str(k) for k in questions}
-
-    corpus_ids = None
-    if args.corpus:
-        corpus_ids = set()
-
-        corpus_path = Path(args.corpus)
-
-        with corpus_path.open("r", encoding="utf-8") as fh:
-            for line_no, line in enumerate(fh, 1):
-                if not line.strip():
-                    continue
-
-                try:
-                    corpus_ids.add(json.loads(line)["doc_id"])
-                except json.JSONDecodeError as e:
-                    raise RuntimeError(
-                        f"JSONL lỗi tại {corpus_path}, dòng {line_no}: {e}"
-                    ) from e
+    expected = {str(k) for k in json.loads(Path(args.questions).read_text(encoding="utf-8"))}
+    corpus_ids = load_corpus_ids(args.corpus) if args.corpus else None
 
     sub = build_submission(preds, expected, corpus_ids, args.fill_missing)
     path = write_zip(sub, args.out)
-
     sizes = [len(v["answer"]) for v in sub.values()]
     print(f"\n✅ {path}  ({path.stat().st_size / 1024:.1f} KB)")
     print(f"   {len(sub)} câu hỏi, trung bình {sum(sizes)/len(sizes):.2f} doc/câu")

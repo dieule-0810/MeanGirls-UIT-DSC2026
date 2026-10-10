@@ -1,242 +1,172 @@
-# reproduce.md — tái lập kết quả nộp bài
+# reproduce.md — tái lập kết quả
 
-> **Trạng thái: BẢN NHÁP, P4 dựng 16/09/2026.** Mục 1 và 3 CẦN P2/P3 xác nhận —
-> xem các khối ⚠️ TODO. Mục 2, 4, 5, 6 đã được P4 chạy và kiểm.
->
-> BTC yêu cầu tái lập được thực nghiệm. Tài liệu này là thứ họ sẽ chạy theo.
-> Nguyên tắc: **mọi lệnh ở đây phải là lệnh ĐÃ CHẠY THẬT**, không phải lệnh lẽ ra
-> nên chạy. Chỗ nào chưa xác nhận thì ghi rõ là chưa xác nhận.
+> Cập nhật 09/10/2026 cho pipeline v0.8. Nguyên tắc: **mọi lệnh ở đây là lệnh ĐÃ CHẠY THẬT**;
+> chỗ nào chưa xác nhận thì ghi rõ. README mục *Sử dụng* là bản rút gọn của tài liệu này.
 
 ---
 
 ## 0. Môi trường
 
 ```
-Python 3.11  (src/verify_env.py chặn cứng, xem REQUIRED_PYTHON)
-pip install -r requirements.txt        # numpy 1.26.4 · scipy 1.13.1 · PyYAML 6.0.1
-pip install -r requirements-p3.txt     # CHỈ cần nếu dùng tokenizer pyvi/underthesea.
-                                       # Đường nộp bài dùng syllable_bigram → KHÔNG cần.
+Python 3.11 (src/verify_env.py chặn cứng)
+pip install -r requirements.txt          # numpy 1.26.4 · scipy 1.13.1 · PyYAML 6.0.1
+pip install -r requirements-dense.txt    # torch 2.14.0 · transformers 5.17.0 — cần cho v0.8
+python scripts/smoke_test.py             # kỳ vọng: 170 passed
 ```
 
-Bước rerank cần thêm `torch` + `transformers`. GPU đã dùng: RTX 3050 6 GB, fp16.
-Chạy được trên CPU nhưng chậm hơn khoảng hai bậc độ lớn.
-
-```bash
-python -m src.verify_env
-python -m pytest tests/ -q          # kỳ vọng: 98 passed, 2 skipped
-```
-
-Trọng số tải từ HuggingFace, **pin revision theo `configs/models.yaml`**. Model duy nhất
-trong đường nộp bài: `BAAI/bge-reranker-v2-m3`, revision `953dc6f6f85a`, 567.755.777 tham số.
-Tổng tham số toàn hệ thống = 567.755.777 (BM25 không có tham số học được) — dưới trần 4 tỷ
-của BTC. Kiểm toán: `docs/param_audit.md`, đếm lại bằng `scripts/count_params.py`.
+`requirements-p3.txt` (pyvi/underthesea) chỉ cần cho lưới benchmark tokenizer, không cần cho
+đường nộp bài (`syllable_bigram` không dùng thư viện ngoài).
 
 ---
 
-## 1. Dữ liệu ⚠️ CẦN P2 XÁC NHẬN
+## 1. Dữ liệu
 
-Đặt dữ liệu BTC vào `data/`: `selected-contexts/`, `train.json`, `public-official.json`.
-Không file nào trong số này được commit (`.gitignore` dòng 3).
+Đặt dữ liệu BTC vào `data/`: `selected-contexts/`, `train.json`, `public-official.json`,
+`private-official.json` (không file nào được commit).
 
 ```bash
-python -m src.data.parse_corpus --corpus-dir data/selected-contexts --out data/corpus_clean.jsonl
-python -m src.data.chunker      --input data/corpus_clean.jsonl --out data/chunks.jsonl
-python -m src.data.split_data   --corpus data/corpus_clean.jsonl --train data/train.json --out-dir data
+python scripts/eda.py --out outputs/eda/eda_notes.md     # sinh docs/exclusion_decisions.json
+python -m src.data.parse_corpus                          # → data/corpus_clean.jsonl
+python -m src.data.chunker --strategy strict --out data/chunks.jsonl
+python -m src.data.split_data                            # → holdout/dev/error_pool/train_split + train_{1000,2500,4689}
 ```
 
-Kỳ vọng: `corpus_clean.jsonl` **8.507** dòng · `chunks.jsonl` **524.422** dòng ·
-`split_data` sinh `holdout.json` 1.000 · `dev.json` 1.000 · `error_pool.json` 300 ·
-`train_split.json` 4.689 (7.000 − 11 câu Vùng Chết).
+`docs/exclusion_decisions.json` (25 văn bản loại, 11 câu vùng chết, 4 cụm trùng) bị `.gitignore`
+chặn — phải sinh bằng `eda.py` trước `parse_corpus` và `split_data`. Báo cáo EDA ghi vào
+`outputs/eda/eda_notes.md`.
 
-> ✅ **Đã xác minh (17/09/2026) — tham số chunking.** Chạy lại `src/data/chunker.py`
-> (bản trong repo, tham số mặc định `--chunk-size 256 --overlap 64`) trên
-> `corpus_clean.jsonl` cho **524.422 / 524.422 dòng trùng khít nội dung** với
-> `data/chunks.jsonl` mà mọi thí nghiệm và bài nộp đã dùng. Lệnh ở trên là lệnh đúng.
->
-> Các file `configs/*.yaml` ghi `max_words: 180 / overlap_words: 45` — hai giá trị đó
-> **chưa bao giờ có tác dụng**, vì `chunker.py` không nhận `--config`. Đừng đọc
-> chúng như mô tả của kho chunk.
->
-> ⚠️ **KHÔNG thay `src/data/chunker.py` bằng chunker theo Điều** (`chunker_dieu.py`).
-> Bản đó sinh kho chunk khác (432.142 chunk). Nếu nó chiếm tên `chunker.py` thì lệnh ở
-> trên vẫn chạy êm nhưng ra kho chunk khác với kho đã sinh ra bài nộp — tái lập hỏng
-> mà không có lỗi nào báo. Chunk theo Điều đã được đo và không cải thiện Recall@5
-> (dev −0,0008, holdout +0,0027, cả hai không có ý nghĩa thống kê).
->
-> ⚠️ **TODO-P2 (2) — `run_v0.1.py` không chạy được.** Nó gọi `src.data.split_holdout`
-> (module thật tên `split_data`) và gọi `src.data.chunker --config <cfg>` (chunker không
-> có tham số đó). Pipeline một-lệnh gãy ở bước 2 và bước 3. Cho tới khi vá xong,
-> **mục 1 này là quy trình chuẩn**, không phải `run_v0.1.py`.
->
-> ⚠️ **TODO-P2 (3)** — `INTERFACES §1` ghi `corpus_clean` 8.532 dòng, thực tế 8.507.
+**Kỳ vọng** (đã kiểm 09/10/2026):
+
+| File | Dòng | SHA-256 |
+|---|---:|---|
+| `corpus_clean.jsonl` | 8.507 | `365306b58c0c14e87adce81a2b383a2245002faacb41b95928ddff4db0d73945` |
+| `chunks.jsonl` — `--strategy strict` (v0.8) | 432.142 | `086868bd7c5a6f86d3fce57914c6af8b001ab52df12a7cdf650b0d8463a47334` |
+| `chunks.jsonl` — `--strategy loose` (v0.1–v0.6) | 524.422 | `032a66ae23b1b64be38f54536bdc365067f364e79bfc4587e0038a48cfaf985e` |
+
+Bảy file chia tập tái tạo khớp từng byte với bản đang dùng (kiểm 09/10/2026).
+
+### ⚠️ Hai kho chunk, một tên file
+
+`data/chunks.jsonl` là tên đã khoá (INTERFACES.md §7), nhưng nội dung đổi một lần:
+
+* **v0.1–v0.6** đo trên kho `loose` (`python -m src.data.chunker`, 524.422 chunk) — nhận cả trích
+  dẫn chéo "theo Điều 5 Luật ..." làm ranh giới.
+* **v0.8** đo trên kho `strict` (`python -m src.data.chunker_dieu` hoặc `--strategy strict`,
+  432.142 chunk) — chỉ nhận tiêu đề `Điều N. `. Embedding dense đã encode trên kho này; dùng kho
+  khác thì `DenseRetriever` dừng với lỗi "vân tay không khớp".
+
+Hai kho cho BM25 gần như như nhau (dev R@5 0,8555 vs 0,8547; holdout 0,8449 vs 0,8475 — không có
+ý nghĩa thống kê). Muốn tái lập một con số, dựng đúng kho mà dòng `experiments.csv` đó đã dùng.
+
+⚠️ SHA-256 kho `loose` ở trên **khác** giá trị ghi trong `docs/releases/v0.6_private.yaml`
+(`34b426dd…`, 576.070.530 byte): kho đó sinh từ một phiên bản chunker trước refactor
+`c59e98d`. Số dòng vẫn là 524.422; nội dung từng chunk đã được xác nhận trùng ngày 17/09.
+Chunker hiện tại (trước và sau refactor 09/10) cho cùng `032a66ae…`.
 
 ---
 
-## 2. Xác minh chỉ mục BM25 (tuỳ chọn, ~3 phút)
-
-Bước này không sinh ra kết quả nào, nó chỉ trả lời "chunks.jsonl của tôi có giống của
-team không". Nếu bốn con số dưới đây khớp thì mọi thứ sau đó sẽ khớp.
+## 2. Embedding (GPU, một lần)
 
 ```bash
-python - <<'PY'
-import json, sys
-sys.path.insert(0, '.')
-from src.retrieval.tokenizers import get_tokenizer
-tk = get_tokenizer('syllable_bigram', fold_tone=True)
-v, n, ntok = set(), 0, 0
-for line in open('data/chunks.jsonl', encoding='utf-8'):
-    if not line.strip():
-        continue
-    t = tk(json.loads(line)['text']); v.update(t); ntok += len(t); n += 1
-print(f"n_chunks={n}  vocab={len(v)}  avgdl={ntok/n:.1f}")
-PY
+python -u scripts/encode_corpus.py --config configs/v0.4_dense.yaml --dry-run    # ước tính
+python -u scripts/encode_corpus.py --config configs/v0.4_dense.yaml --resume
 ```
 
-Kỳ vọng: `n_chunks=524422  vocab=1212503  avgdl=309.9` — khớp `outputs/v0.3_bm25_best/run_meta.json`.
-
-Đây cũng là bằng chứng khôi phục `fold_tone: true` cho `configs/v0.3_bm25_best.yaml`:
-chạy lại với `fold_tone=False` cho `vocab=1215933`, không khớp `run_meta`.
+Hoặc chia 8 mảnh trên 4 tài khoản Kaggle bằng `docs/kaggle_encode.ipynb` (mỗi tài khoản: import
+notebook, thêm dataset chứa `data/chunks.jsonl`, secret `RCLONE_CONF_B64`, GPU T4 ×2 + Internet ON,
+sửa `SHARDS_THIS_ACCOUNT` rồi *Save & Run All*; chạy lại thì notebook bỏ qua mảnh đã xong), rồi
+`python scripts/merge_embeddings.py`. Kỳ vọng
+`data/embeddings.meta.json`: `n_chunks 432142`, `chunk_fingerprint 9efb4ecf6b194a66d73ed24e`,
+`revision 18b44161e041bf1d3a333ab5144b5b7b93f914d2`.
 
 ---
 
-## 3. Đường nộp bài ⚠️ CHỜ KẾT QUẢ RERANK TRÊN POOL MỚI
-
-Cấu hình: `configs/v0.3_bm25_best.yaml` (BM25 `syllable_bigram` + `mean_top2` +
-`candidate_chunks=2000`) hợp nhất RRF `w=0,6`, `rrf_k=60`, với `bge-reranker-v2-m3`
-top-20, 1 chunk/doc, `--prepend-name`.
-
-### 3.1 BM25 → top-50 (CPU)
-
-Chi phí đo thật (16/09/2026, máy P4): đọc chunk 8,4 s · tách từ 82,7 s · dựng chỉ mục
-242,8 s · truy vấn **72 ms/câu** → khoảng **6,5 phút** cho 1.000 câu kể cả index.
-RAM đỉnh ~7 GB.
-
-> ⚠️ `run_meta.json` của lần chạy v0.3 ghi `index_seconds: 34.3`, **không tái lập được**
-> (đo lại ra 242,8 s). Nhưng bốn con số mô tả *nội dung* chỉ mục thì khớp tuyệt đối:
-> vocab 1.212.503 · nnz 96.134.846 · avgdl 309,9 · 524.422 chunk / 8.507 doc. Kết luận:
-> chỉ mục giống hệt, trường thời gian trong `run_meta` đo thứ khác (nhiều khả năng
-> không tính bước tách từ, hoặc chạy với cache ấm). **Đừng dùng `index_seconds` làm tiêu
-> chí kiểm tra tái lập** — dùng vocab/nnz/avgdl.
+## 3. Đường nộp bài v0.8
 
 ```bash
-python -m scripts.p4_build_ranking --config configs/v0.3_bm25_best.yaml \
-    --questions data/public-official.json \
-    --out outputs/v0.4_submit/public_bm25_top50.json --top-k 50
+python -u scripts/run_pipeline.py --config configs/v0.8_hybrid_rrf.yaml --questions data/dev.json --eval
+python -u scripts/run_pipeline.py --config configs/v0.8_hybrid_rrf.yaml \
+    --questions data/private-official.json --submission
 ```
 
-Đối chứng trên tập có nhãn (phải ra **R@5 = 0,8555** trên dev n=1000):
+**Kỳ vọng trên dev** (đã chạy 09/10/2026, khớp từng byte `ranking_full.json` và
+`predictions.json` giữa code trước và sau refactor):
+
+```
+Recall@5 0.9384 · Recall@20 0.9786 · Recall@50 0.9857
+Chấm như BTC: recall=0.9354 precision=0.2451
+```
+
+BM25 một mình (`configs/v0.3_bm25_best.yaml`) trên cùng kho: `Recall@5 0.8547 · Recall@50 0.9708`.
+
+### 3.1 Chọn siêu tham số (đã chạy, kết quả nằm trong config)
 
 ```bash
-python -m scripts.p4_build_ranking --config configs/v0.3_bm25_best.yaml \
-    --questions data/dev.json \
-    --out outputs/v0.3_bm25_best/ranking_full.json --top-k 50
+python scripts/tune_rrf.py --config configs/v0.8_hybrid_rrf.yaml --limit-fit 0
+#   → fuse_level=doc · rrf_k=20 · w_bm25=0,4 · dev R@5 0,9384 · độ lạc quan +0,0050
+
+python -u scripts/run_pipeline.py --config configs/v0.8_hybrid_rrf.yaml \
+    --questions data/train_split.json --out-dir outputs/v0.8_hybrid_doc/train_split
+python scripts/fit_calibration.py \
+    --ranking outputs/v0.8_hybrid_doc/train_split/ranking_full.json --questions data/train_split.json \
+    --verify-ranking outputs/v0.8_hybrid_rrf/ranking_full.json --verify-questions data/dev.json \
+    --max-recall-drop 0.003 --out outputs/v0.8_hybrid_doc/calibration.json
+#   → θ = 0.502793 (đã chạy lại 09/10/2026, khớp từng khoá với calibration.json cũ)
 ```
 
-### 3.2 Rerank top-20 (GPU, ~80 phút cho 20.000 cặp trên RTX 3050 6 GB)
+### 3.2 Tính tất định
 
-`--model` nhận **alias** trong `MODELS` của `src/rerank/cross_encoder.py`
-(`bge-m3` · `mminilm` · `viranker`), **không** nhận repo id HuggingFace. Alias mới là chỗ
-pin `revision`; truyền repo id thẳng sẽ bỏ qua lớp pin đó, nên script chặn cứng.
-`bge-m3` → `BAAI/bge-reranker-v2-m3@953dc6f6f85a`.
-
-```bash
-python -m scripts.p4_rerank --model bge-m3 \
-    --ranking outputs/v0.4_submit/public_bm25_top50.json \
-    --questions data/public-official.json \
-    --rerank-top 20 --chunks 1 --prepend-name \
-    --batch-size 8 --max-length 512 \
-    --out outputs/p4_rerank/public_bge_top20_syl.json
-```
-
-> ⚠️ **TODO-P4 — `--max-length 512` có thể đang cắt cụt đầu vào.** Lý do chọn 512 ghi
-> trong `P4_TASKS §3.2` là "chunk 180 từ". Chunk thật dài tới 261 từ (mục 1). Với
-> XLM-R tiếng Việt ~1,8 subword/từ thì đuôi phân bố vượt 512. Chưa đo tỉ lệ bị cắt.
-> Probe rẻ: chạy lại `dev_sub300` với `--max-length 1024` và so với
-> `outputs/p4_rerank/devsub_bge_top20_name.json`.
-
-### 3.3 Hợp nhất RRF, `w` CỐ ĐỊNH
-
-```bash
-python -m scripts.p4_fuse --bm25 outputs/v0.4_submit/public_bm25_top50.json \
-    --rerank outputs/p4_rerank/public_bge_top20_syl.json \
-    --questions data/public-official.json --top-k 20 --w 0.6 --rrf-k 60 \
-    --out outputs/v0.4_submit/public_rrf_w06.json
-```
-
-**`--w` là bắt buộc.** Không có nó, script quét `w` 0→1 rồi ghi ra thứ hạng của `w` tốt
-nhất — trên tập thi đó là tune trên tập thi. Bản vá hiện tại dừng hẳn nếu tập câu hỏi
-không có nhãn mà thiếu `--w`.
-
-`w = 0,6` chốt từ trước, không chọn trên tập này: `w*` rơi vào 0,6–0,7 ở cả 5 lần chạy
-độc lập qua 3 reranker và 2 độ sâu (`P4_TASKS §0.2(5)`).
-
-### 3.4 Dựng submission.zip
-
-```bash
-python -m scripts.p4_to_preds --ranking outputs/v0.4_submit/public_rrf_w06.json \
-    --questions data/public-official.json --out outputs/v0.4_submit/public_preds.json
-
-python -m src.make_submission --preds outputs/v0.4_submit/public_preds.json \
-    --questions data/public-official.json --corpus data/corpus_clean.jsonl \
-    --out outputs/v0.4_submit/submission.zip
-```
-
-`make_submission` khử trùng lặp **rồi mới** cắt 5 (mẫu số Precision là `len(list)` sau
-khi cắt), ép mọi `doc_id` về `str` (int vs str = 0 điểm im lặng), và dừng nếu tập qid
-không khớp chính xác (thiếu/thừa qid → BTC raise → **Failed**, mất một lượt nộp).
-Hành vi mã chấm đã xác minh: `docs/scoring_behaviour.md`, test `tests/test_scoring.py` 24/24.
+Điểm BM25 có thể lệch ở chữ số thập phân thứ 4 giữa hai tiến trình (thứ tự từ vựng dựng từ
+`set` chuỗi, phụ thuộc `PYTHONHASHSEED`, kéo theo thứ tự cộng float32). Thứ hạng và dự đoán
+không đổi. Cần khớp từng byte `ranking_full.json` thì đặt `PYTHONHASHSEED=0`.
 
 ---
 
-## 4. Số cần khớp
+## 4. Tái lập các bản cũ
 
-| Hệ thống | Tập | R@5 |
-|---|---|---:|
-| BM25 `regex` + `max` | dev n=1000 | 0,7863 |
-| BM25 `regex` + `mean_top2` | dev n=1000 | 0,8116 |
-| BM25 `syllable_bigram` + `mean_top2` | dev n=1000 | **0,8555** |
-| + RRF `w=0,6` với rerank dựng trên pool `regex` | dev n=1000 | 0,8736 |
-| + RRF `w=0,6` với rerank dựng trên pool `syllable_bigram` | dev n=1000 | ⚠️ **chưa đo** |
+Các bản v0.4–v0.6 đi qua chuỗi script `p4_*`/`p5_*`, KHÔNG qua `run_pipeline.py`, và dùng kho
+chunk `loose`. Chuỗi lệnh đầy đủ nằm trong kê khai, in bằng:
 
-> ⚠️ Dòng 0,8736 **không mô tả hệ thống ở mục 3**. File rerank dùng để tạo ra nó
-> (`outputs/p4_rerank/dev_bge_top20_name.json`) dựng trên pool `regex`, trong khi mục 3
-> rerank trên pool `syllable_bigram`. Độ chồng lấn top-20 giữa hai pool: **44,0%** theo
-> cặp (doc, chunk), 62,7% theo doc — tức 56% số cặp đi vào hợp nhất là cặp reranker chưa
-> từng chấm. Dòng cuối bảng là con số phải điền trước khi báo cáo bất cứ thứ gì.
+```bash
+python scripts/verify_release.py --manifest docs/releases/v0.6_private.yaml --commands
+```
 
-Mọi Δ trong bảng đều đã qua `scripts/p4_paired_test.py` (McNemar + bootstrap cặp).
-Không dùng sai số biên: SE của *hiệu* chỉ phụ thuộc số câu bất đồng.
+Tóm tắt (chi tiết: `RUN_PRIVATE_KNN.md`):
 
----
+| Bản | Lệnh chính | Số kỳ vọng |
+|---|---|---|
+| v0.3 | `p4_build_ranking --config configs/v0.3_bm25_best.yaml --top-k 50` | dev R@5 0,8555 |
+| v0.4 | `p4_rerank --model bge-m3 --rerank-top 20 --chunks 1 --prepend-name` → `p4_fuse --w 0.6 --rrf-k 60` | dev 0,8733 · holdout 0,8559 |
+| v0.6 | `p5_knn_fuse --memory data/train.json` (wb .6 · wr .4 · wk .1) | holdout 0,8855 · private LB 0,8818 |
 
-## 5. Hai kiểm tra còn nợ, đều đe doạ số ở mục 4
+`p4_fuse.py` BẮT BUỘC có `--w` trên tập không nhãn — thiếu nó script quét `w` trên chính tập thi.
+`p4_rerank --model` nhận alias trong `src/rerank/cross_encoder.MODELS` (nơi pin revision), không
+nhận repo id.
 
-**(a) `candidate_chunks=2000` so với `null` trên `syllable_bigram`.**
-Tương đương mới chỉ được chứng minh trên tokenizer `regex` (300/300 câu `error_pool`
-có top-50 giống hệt). `syllable_bigram` có nnz 96,1M so với 43,8M nên phân bố điểm chunk
-khác hẳn. Nếu 2000 không còn tương đương thì +0,0439 bị pha tạp bởi hiệu ứng cắt ứng viên.
-Chạy trên `error_pool` 300 câu, hai config chỉ khác dòng `candidate_chunks`. **Cảnh báo
-RAM: index sylbigram không cắt ứng viên tốn khoảng 6–7 GB, không phải 3,1 GB.**
-
-**(b) `fold_tone` bị trộn vào khoản +0,0439.**
-Nền 0,8116 chạy trên `configs/v0.1_bm25_cap2000.yaml` với `fold_tone: false`; lần chạy
-0,8555 dùng `fold_tone: true` (chứng minh ở mục 2). Vậy +0,0439 gộp **hai** thay đổi.
-Ablation tách đôi: `syllable_bigram` + `fold_tone: false` + `mean_top2` trên dev-1000.
-Một lần index, vài phút. Bài báo không quy công cho tokenizer được trước khi có số này.
+Các kiểm tra từng treo ở bản trước của tài liệu này đã có kết quả trong `experiments.csv`:
+`candidate_chunks` 2000 vs null (`v0.5_candnull_*`, không khác biệt có ý nghĩa), tách
+`fold_tone` khỏi khoản +0,0439 (`v0.4_syl_notonefold`: +0,0429 tokenizer, +0,0010 fold_tone),
+`max_length` 1024 cho reranker (`v0.5_maxlen1024_devsub300`).
 
 ---
 
-## 6. Ghi chú về `outputs/`
+## 5. Ghi chú về `outputs/`
 
-`.gitignore` dòng 25 (`outputs/*`) chặn toàn bộ thư mục kết quả, nên mọi file ranking chỉ
-tồn tại trên ổ đĩa từng người. Tài liệu này tồn tại để bù cho điều đó: chạy theo mục 1→3
-là dựng lại được tất cả.
+`outputs/*` bị `.gitignore` chặn; mọi file ranking chỉ tồn tại trên ổ đĩa từng người. Thứ duy
+nhất trong repo ràng một bài nộp vào đầu vào sinh ra nó là kê khai `docs/releases/*.yaml`
+(kiểm bằng `scripts/verify_release.py`). Lượt nộp v0.8 (`outputs/private_hybrid_doc_calibrated/`)
+**chưa có kê khai** và chưa có tag.
 
-Hai thư mục trong `outputs/` dễ gây hiểu nhầm:
-- `outputs/v0.2_bm25_tok/` là **chạy demo** (`"demo": true`, 429 chunk, 60 câu). Không
-  dùng được cho kết luận nào.
-- `outputs/v0.3_bm25_best/` là chạy thật, đầy đủ 524.422 chunk, dev-1000. Đây là nguồn
-  của 0,8555.
+`outputs/v0.2_bm25_tok/` là chạy demo (corpus giả 429 chunk) — không dùng cho kết luận nào.
 
-`.gitignore` dòng 44 có hai mẫu dính liền do thiếu newline, và mẫu đó còn trỏ sai thư mục
-(`outputs/label_audit/error_audit_r*.csv`, file thật ở `outputs/error_audit/`).
+---
+
+## 6. Sự cố đã gặp
+
+| Triệu chứng | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| `verify_env` báo sai Python | Máy dùng 3.10/3.12 | Tạo venv bằng đúng `python3.11` |
+| `ls data/selected-contexts \| wc -l` ≠ 8532 | Giải nén tạo thêm một cấp thư mục | `mv data/selected-contexts/*/*.json data/selected-contexts/` |
+| `Không tìm thấy docs/exclusion_decisions.json` | File do `scripts/eda.py` sinh, bị `.gitignore` chặn | `python scripts/eda.py --out outputs/eda/eda_notes.md` |
+| `embeddings.npy encode từ MỘT BỘ CHUNK KHÁC` | `chunks.jsonl` dựng bằng chiến lược khác lần encode | Dựng lại bằng `--strategy strict`, hoặc encode lại |
+| Recall ≈ 0 nhưng không có lỗi | `doc_id` bị ép thành int ở đâu đó | Xem `docs/scoring_behaviour.md`; `make_submission.py` lẽ ra đã chặn |

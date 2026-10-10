@@ -40,6 +40,7 @@ from pathlib import Path
 
 
 def main() -> int:
+    """Điểm vào CLI: kiểm file zip trước khi nộp."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--zip", required=True)
     ap.add_argument("--questions", required=True,

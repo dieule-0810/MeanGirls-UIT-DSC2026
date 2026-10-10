@@ -1,5 +1,4 @@
-"""
-scripts/verify_bge_m3.py — đếm tham số thật của BAAI/bge-m3.
+"""Đếm tham số thật của BAAI/bge-m3 (repo không có safetensors).
 
 BGE-M3 không có safetensors nên count_params.py không đọc được. Script này tải
 pytorch_model.bin và đếm trực tiếp, đồng thời kiểm tra hai head phụ.
@@ -20,6 +19,7 @@ DERIVED = 567_754_752      # con số suy diễn cần kiểm chứng
 
 
 def count(filename: str) -> int:
+    """Tải một file trọng số và đếm số tham số."""
     path = hf_hub_download(REPO, filename, revision=REVISION)
     sd = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(sd, dict):
@@ -28,6 +28,7 @@ def count(filename: str) -> int:
 
 
 def main():
+    """Điểm vào CLI."""
     backbone = count("pytorch_model.bin")
     print(f"backbone (dense)      : {backbone:>13,}  = {backbone/1e6:.2f}M")
 

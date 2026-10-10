@@ -1,364 +1,274 @@
-"""
-src/data/parse_corpus.py - Bộ tiền xử lý và gộp kho văn bản pháp luật thô (Corpus Preprocessing)
+"""Gộp và làm sạch kho văn bản thô `context_*.json` → `corpus_clean.jsonl`.
 
-Công dụng:
-    Đọc toàn bộ 8.532 file context_*.json từ thư mục dữ liệu thô, tiến hành dọn dẹp rác xuống dòng,
-    lọc sạch thông báo bảo mật (crawler pollution), ép kiểu dữ liệu an toàn, tự động kiểm tra
-    chất lượng (QA) và xuất ra một file JSON Lines (JSONL) duy nhất tại data/corpus_clean.jsonl.
+Đọc 8.532 file thô theo thứ tự tên file, loại 25 văn bản đã chốt (20 rỗng + 5 trùng-dư, danh
+sách trong `docs/exclusion_decisions.json` do `scripts/eda.py` sinh), làm sạch rồi ghi 8.507
+dòng JSONL đúng hợp đồng INTERFACES.md §1, in SHA-256 và chạy bộ thẩm định ở cuối.
 
-Cách chạy:
+Các bẫy dữ liệu đã xử lý:
+
+* `id` trong file thô là int, nhãn BTC là str ⇒ ép `str` NGAY tại điểm đọc.
+* 13,2% văn bản thiếu `name` ⇒ quy về `""` (không bịa nội dung).
+* Văn bản rỗng nằm trong danh sách loại; rỗng MỚI phát sinh thì giữ `""`, không chế chữ.
+* Rác crawler ("quý khách vui lòng đăng nhập", ...) bị chặt từ vị trí xuất hiện trở đi.
+* Mọi khoảng trắng/xuống dòng (`\\r\\n\\n`) kéo phẳng thành một dấu cách; Unicode NFC.
+* `link` đưa về chữ thường.
+* Thứ tự dòng theo thứ tự tên file (`context_100` trước `context_2`) — cố định để SHA-256 tái lập.
+
+Typical usage example:
+
+    python scripts/eda.py                       # sinh docs/exclusion_decisions.json (nếu chưa có)
     python -m src.data.parse_corpus --corpus-dir data/selected-contexts --out data/corpus_clean.jsonl
-
-Cấu trúc mã nguồn:
-    1. HELPER FUNCTIONS:
-        - clean_text(text): Dọn rác \r\n\n, khoảng trắng thừa và lọc sạch đuôi thông báo bảo mật bằng Regex.
-        - calculate_sha256(filepath): Tính toán dấu vân tay kỹ thuật số SHA-256 của file output.
-    2. QA VALIDATOR:
-        - verify_processed_corpus(filepath): Bộ tự động thẩm định chất lượng dữ liệu sạch.
-    3. CORE PARSER (parse_corpus):
-        - Quét tuần tự 8.532 file thô theo thứ tự bảng chữ cái để đảm bảo tính tuần tự không đổi.
-        - Áp dụng các chốt chặn an toàn cho từng dòng dữ liệu (ép kiểu, gán giá trị mặc định, lọc rác).
-        - Ghi stream từng dòng JSON vào file đích và kích hoạt bộ QA validator ở cuối.
-    4. ENTRYPOINT (main):
-        - Nhận tham số dòng lệnh thông qua argparse và kích hoạt luồng xử lý.
-
-    ┌────────────────────────────────────────────────────────┐
-    │  IMPORTS BLOCK (argparse, json, re, hashlib, Path)  │
-    ├────────────────────────────────────────────────────────┤
-    │  1. HELPER FUNCTIONS                                   │
-    │     ├── clean_text(raw_text) -> str                    │
-    │     └── calculate_sha256(file_path) -> str             │
-    ├────────────────────────────────────────────────────────┤
-    │  2. QA VALIDATOR                                       │
-    │     └── verify_processed_corpus(file_path,             │
-    │         expected_lines: int) -> bool                   │
-    ├────────────────────────────────────────────────────────┤
-    │  3. CORE PARSER (parse_corpus)                         │
-    │     ├── Quét 8.532 file thô bằng .glob()               │
-    │     ├── Nạp docs_exclude_from_corpus từ                │
-    │     │   exclusion_decisions.json, bỏ qua 25 doc_id     │
-    │     ├── Đọc, ép str(id), sửa khuyết name/passage       │
-    │     ├── Dọn rác crawler (security popup) bằng Regex    │
-    │     └── Ghi tuần tự từng dòng vào file .jsonl          │
-    ├────────────────────────────────────────────────────────┤
-    │  4. CLI ENTRYPOINT (main)                              │
-    │     └── Cấu hình argparse (--corpus-dir, --out)        │
-    └────────────────────────────────────────────────────────┘
-
-Các lưu ý sống còn (Bẫy dữ liệu phòng ngự):
-    - [BẪY KIỂU DỮ LIỆU]: id của file thô là int (177504) nhưng nhãn BTC dùng str ("177504").
-      Bắt buộc ép str(doc_id) ngay tại điểm đọc để tránh lỗi "0 điểm im lặng" trên Leaderboard.
-    - [BẪY KHUYẾT TRƯỜNG]: 13.2% tài liệu khuyết trường 'name' -> quy về chuỗi rỗng "", tránh 
-      "ô nhiễm từ vựng" khi index. Field name vẫn khuyết ở corpus sau xử lý.
-    - [BẪY RỖNG PASSAGE]: 20 file rỗng passage (đã xác nhận qua BTC + eda.py) bị LOẠI HẲN khỏi
-      corpus_clean.jsonl (đọc từ docs_exclude_from_corpus trong exclusion_decisions.json), không
-      còn giữ lại với "" như bản trước 20/8. TUYỆT ĐỐI không bịa nội dung rác cho các trường hợp
-      rỗng phát sinh mới ngoài danh sách đã biết.
-    - [CHỮ THƯỜNG LINK]: Đổi link về dạng lowercase() để đồng bộ hóa các trường hợp trùng lặp.
-    - [XÁC MINH CHECKSUM]: Bắt buộc tự in số dòng (đọc động từ docs/exclusion_decisions.json,
-      hiện là 8.507 sau khi loại 25 doc_id rỗng/trùng-dư) và SHA-256 Checksum sau khi ghi xong.
-    - [THỨ TỰ DÒNG / ID]: Dữ liệu được ghi theo thứ tự bảng chữ cái (lexicographical) của tên file thô 
-      (ví dụ: ID 100 đứng trước ID 2). Đảm bảo tính nhất quán tuyệt đối giúp mã băm SHA-256 trùng khớp 
-      100%, hoàn toàn không ảnh hưởng đến hiệu năng lập chỉ mục hay điểm số truy hồi của BTC.
-    - [LỌC RÁC CRAWLER]: Tự động nhận diện và xóa bỏ 100% thông báo bảo mật ("Quý khách vui lòng đăng nhập",
-      "đăng nhập để xem", "tránh rò rỉ mật khẩu",...)
 """
+from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import re
 import unicodedata
+from dataclasses import dataclass, field
 from pathlib import Path
 
-
-# ===========================================================================
-# CONSTANTS & REGEX FOR CRAWLER POLLUTION
-# ===========================================================================
-# Danh sách các cụm rác thực tế bám đuôi từ website nguồn
 CRAWLER_JUNK_PATTERNS = [
     "quý khách vui lòng đăng nhập",
     "đăng nhập để xem",
     "rò rỉ mật khẩu",
     "vui lòng đăng nhập để",
-    "đăng nhập để tiếp tục"
+    "đăng nhập để tiếp tục",
 ]
+# Chặt toàn bộ nội dung từ vị trí dính rác trở đi.
+CLEAN_JUNK_REGEX = re.compile(r"(" + "|".join(CRAWLER_JUNK_PATTERNS) + r").*$", re.IGNORECASE)
+DEFAULT_DECISIONS = Path("docs/exclusion_decisions.json")
+REQUIRED_KEYS = ("doc_id", "name", "link", "text")
 
-# Regex mẫu dùng chung để xóa rác (chặt toàn bộ nội dung từ vị trí dính rác trở đi)
-CLEAN_JUNK_REGEX = re.compile(
-    r"(" + "|".join(CRAWLER_JUNK_PATTERNS) + r").*$",
-    re.IGNORECASE
-)
 
-# ===========================================================================
-# 1. HELPER FUNCTIONS
-# ===========================================================================
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Làm sạch một văn bản
+# ─────────────────────────────────────────────────────────────────────────────
 def clean_text(raw_text: str) -> str:
-    """
-    Sử dụng Regex dọn dẹp sạch sẽ ký tự xuống dòng rác, khoảng trắng thừa,
-    chuẩn hóa Unicode NFC và dọn sạch thông báo bảo mật (crawler junk).
+    """NFC, kéo phẳng mọi khoảng trắng thành một dấu cách, chặt đuôi rác crawler.
+
+    Args:
+        raw_text: Nội dung thô.
+
+    Returns:
+        Văn bản sạch; rỗng nếu đầu vào rỗng.
     """
     if not raw_text:
         return ""
+    cleaned = re.sub(r"\s+", " ", unicodedata.normalize("NFC", raw_text))
+    return CLEAN_JUNK_REGEX.sub("", cleaned).strip()
 
-    # 1. Ép về chuẩn Unicode NFC để xử lý triệt để bẫy NFD
-    raw_text = unicodedata.normalize("NFC", raw_text)
 
-    # Kéo phẳng văn bản bằng Regex (\s+ đại diện cho mọi ký tự khoảng trắng/xuống dòng)
-    cleaned = re.sub(r"\s+", " ", raw_text)
-    
-    # 2. Loại bỏ rác bằng hằng số chung (chặt toàn bộ đoạn rác trở đi)
-    cleaned = CLEAN_JUNK_REGEX.sub("", cleaned)
-    
-    return cleaned.strip()
+def clean_record(doc: dict) -> dict:
+    """Một bản ghi thô (đã có `id`) → bản ghi đúng INTERFACES.md §1.
+
+    Args:
+        doc: Nội dung một `context_*.json`.
+
+    Returns:
+        `{"doc_id": str, "name": str, "link": str, "text": str}`.
+    """
+    name = doc.get("name")
+    passage = doc.get("passage")
+    if passage is None:
+        passage = doc.get("text") or ""
+    return {
+        "doc_id": str(doc["id"]),
+        "name": "" if name is None or not str(name).strip() else str(name).strip(),
+        "link": str(doc.get("link") or "").strip().lower(),
+        "text": clean_text(str(passage)),
+    }
 
 
 def calculate_sha256(file_path: Path) -> str:
-    """
-    Tính mã hash SHA-256 (vân tay kỹ thuật số) của file output theo từng block 64KB
-    để chống tràn bộ nhớ RAM đối với file dung lượng lớn.
-    """
-    sha256_hash = hashlib.sha256()
+    """SHA-256 của file, đọc theo khối 64 KB để không nạp cả file vào RAM."""
+    h = hashlib.sha256()
     with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(65536), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest()
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
-# ===========================================================================
-# 2. INTEGRATED QA VALIDATOR (Bộ Thẩm Định Chất Lượng)
-# ===========================================================================
+def load_decisions(path: Path) -> dict:
+    """Đọc quyết định loại trừ (`docs_exclude_from_corpus`, `n_corpus_after_exclusion`, ...).
+
+    Raises:
+        FileNotFoundError: Chưa có file — chạy `python scripts/eda.py` trước.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Không tìm thấy {path}. File này do `python scripts/eda.py` sinh (bị .gitignore chặn), "
+            f"chạy nó trước khi parse."
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Thẩm định corpus sạch
+# ─────────────────────────────────────────────────────────────────────────────
+@dataclass
+class CorpusScan:
+    """Kết quả quét `corpus_clean.jsonl`."""
+
+    n_lines: int = 0
+    keys_ok: bool = True
+    ids_str: bool = True
+    empty_text: int = 0
+    empty_name: int = 0
+    raw_newlines: int = 0
+    upper_links: int = 0
+    junk_leaks: list[str] = field(default_factory=list)
+    suspicious_login: list[str] = field(default_factory=list)
+
+    def passed(self, expected_lines: int) -> bool:
+        """Đạt mọi điều kiện (số dòng, khoá, kiểu, rác)."""
+        return (
+            self.n_lines == expected_lines and self.keys_ok and self.ids_str
+            and self.raw_newlines == 0 and self.upper_links == 0
+            and self.empty_text == 0 and not self.junk_leaks
+        )
+
+
+def _scan_doc(scan: CorpusScan, idx: int, doc: dict) -> None:
+    """Cập nhật `scan` với một bản ghi corpus."""
+    for key in REQUIRED_KEYS:
+        if key not in doc:
+            print(f"  Dòng {idx + 1} (ID: {doc.get('doc_id')}) bị khuyết khóa: {key}")
+            scan.keys_ok = False
+    doc_id = doc.get("doc_id")
+    if doc_id is not None and not isinstance(doc_id, str):
+        scan.ids_str = False
+    scan.empty_name += doc.get("name") == ""
+    passage = doc.get("text")
+    scan.empty_text += passage == ""
+    if "\r" in passage or "\n\n" in passage:
+        scan.raw_newlines += 1
+    if any(c.isupper() for c in doc.get("link", "") if c.isalpha()):
+        scan.upper_links += 1
+    lowered = unicodedata.normalize("NFC", passage).lower()
+    if any(unicodedata.normalize("NFC", p).lower() in lowered for p in CRAWLER_JUNK_PATTERNS):
+        scan.junk_leaks.append(doc_id)
+    elif "đăng nhập" in lowered and len(lowered.split()) < 300:
+        # Văn bản ngắn mà có "đăng nhập" rất dễ là file rác cụt đầu — soi tay.
+        scan.suspicious_login.append(doc_id)
+
+
+def scan_corpus(path: Path) -> CorpusScan:
+    """Quét `corpus_clean.jsonl`, đếm mọi vi phạm hợp đồng và dấu vết rác."""
+    scan = CorpusScan()
+    with open(path, encoding="utf-8") as f:
+        for idx, line in enumerate(f):
+            scan.n_lines += 1
+            try:
+                doc = json.loads(line)
+            except json.JSONDecodeError as e:
+                print(f"Dòng {idx + 1} không phải JSON hợp lệ: {e}")
+                scan.keys_ok = False
+                continue
+            _scan_doc(scan, idx, doc)
+    return scan
+
+
+def _print_corpus_scan(scan: CorpusScan, expected_lines: int) -> None:
+    """In kết quả quét corpus."""
+    ok = "đạt"
+    print(f"  - Số dòng: {scan.n_lines} (kỳ vọng {expected_lines})")
+    print(f"  - Khoá {', '.join(REQUIRED_KEYS)}: " + (ok if scan.keys_ok else "có bản ghi thiếu khoá"))
+    print("  - doc_id là str: " + (ok if scan.ids_str else "có id kiểu số (int)!"))
+    print("  - Không còn \\r / \\n\\n: " + (ok if not scan.raw_newlines else f"còn {scan.raw_newlines} dòng"))
+    print("  - link chữ thường: " + (ok if not scan.upper_links else f"còn {scan.upper_links} link viết hoa"))
+    print(f"  - name rỗng: {scan.empty_name} · text rỗng: {scan.empty_text}")
+    print("  - Rác crawler: " + (ok if not scan.junk_leaks else f"còn {len(scan.junk_leaks)} văn bản: {scan.junk_leaks}"))
+    if scan.suspicious_login:
+        print(f"  - Nghi ngờ (soi tay): {len(scan.suspicious_login)} văn bản ngắn chứa 'đăng nhập' {scan.suspicious_login[:10]}")
+
 
 def verify_processed_corpus(corpus_clean_path: Path, expected_lines: int) -> bool:
-    """
-    Tự động quét kiểm tra file corpus_clean.jsonl đã sinh ra.
-    Xác minh tất cả các điều kiện ràng buộc của INTERFACES.md và thống kê từ EDA.
+    """Thẩm định `corpus_clean.jsonl` theo INTERFACES.md §1 và các phát hiện EDA.
+
+    Args:
+        corpus_clean_path: File vừa sinh.
+        expected_lines: Số dòng kỳ vọng (8.507).
+
+    Returns:
+        True nếu đạt mọi điều kiện.
     """
     if not corpus_clean_path.exists():
         print(f"Bộ QA thất bại: Không tìm thấy file {corpus_clean_path}")
         return False
-
-    print("\n" + "="*80)
-    print("THẨM ĐỊNH CHẤT LƯỢNG DỮ LIỆU TỰ ĐỘNG (QA)...")
-    print("="*80)
-
-    n_lines = 0
-    all_keys_valid = True
-    all_ids_are_str = True
-    empty_passages = 0
-    empty_names = 0
-    raw_newlines_found = 0
-    links_uppercase = 0
-
-    # Bộ kiểm định rác độc lập (Broad check)
-    leaked_security_popups = []  # Chứa các file dính "rò rỉ mật khẩu"
-    potential_false_positives = []  # Chứa các file dính "đăng nhập" hợp lệ
-
-    with open(corpus_clean_path, "r", encoding="utf-8") as f:
-        for idx, line in enumerate(f):
-            n_lines += 1
-            try:
-                doc = json.loads(line)
-            except Exception as e:
-                print(f"Dòng {idx+1} không phải JSON hợp lệ: {e}")
-                all_keys_valid = False
-                continue
-
-            # 1. Kiểm tra sự tồn tại đầy đủ của 4 trường bắt buộc theo INTERFACES.md
-            for key in ["doc_id", "name", "link", "text"]:
-                if key not in doc:
-                    print(f"  Dòng {idx + 1} (ID: {doc.get('doc_id')}) bị khuyết khóa: {key}")
-                    all_keys_valid = False
-
-            # 2. Kiểm tra bẫy kiểu dữ liệu ID (Bắt buộc phải là str)
-            doc_id = doc.get("doc_id")
-            if doc_id is not None and not isinstance(doc_id, str):
-                all_ids_are_str = False
-
-            # 3. Kiểm tra khuyết name (đã quy về chuỗi rỗng "" chưa)
-            name = doc.get("name")
-            if name == "":
-                empty_names += 1
-
-            # 4. Kiểm tra rỗng passage (phải giữ rỗng chứ không được chế chữ rác)
-            passage = doc.get("text")
-            if passage == "":
-                empty_passages += 1
-
-            # 5. Kiểm tra xem Regex đã dọn sạch các ký tự xuống dòng rác (\r\n\n) chưa
-            if "\r" in passage or "\n\n" in passage:
-                raw_newlines_found += 1
-
-            # 6. Kiểm tra URL đã đưa về viết thường (lowercase) chưa
-            link = doc.get("link", "")
-            if any(c.isupper() for c in link if c.isalpha()):
-                links_uppercase += 1
-
-            # 7. Kiểm tra xem còn dính từ khóa bảo mật rác nào sót lại không
-            # Thẩm định bằng Unicode NFC chuẩn hóa
-            passage_nfc = unicodedata.normalize("NFC", passage).lower()
-            
-            has_junk_leak = False
-            for pattern in CRAWLER_JUNK_PATTERNS:
-                pattern_nfc = unicodedata.normalize("NFC", pattern).lower()
-                if pattern_nfc in passage_nfc:
-                    has_junk_leak = True
-                    break
-
-            if has_junk_leak:
-                # Nếu dính bất kỳ cụm rác chính xác nào
-                leaked_security_popups.append(doc_id)
-                
-            # Quét cảnh báo False-Positive lành tính cho từ đơn lẻ "đăng nhập" ngoài cụm rác thực tế
-            elif "đăng nhập" in passage_nfc and len(passage_nfc.split()) < 300: 
-                # Nếu văn bản quá ngắn mà dính "đăng nhập", rất dễ là file rác cụt đầu
-                potential_false_positives.append(doc_id)
-
-    print("\n--------------------------------------------------")
-    print(" THẨM ĐỊNH CHI TIẾT:")
-    print("--------------------------------------------------")
-    
-    # Check các điều kiện
-    passed_lines = n_lines == expected_lines
-    passed_keys = all_keys_valid
-    passed_ids = all_ids_are_str
-    passed_newlines = raw_newlines_found == 0
-    passed_links = links_uppercase == 0
-    passed_empty_passages = empty_passages == 0
-    passed_security_junk = len(leaked_security_popups) == 0
-
-    print(f"  - Tổng số dòng: {n_lines} " + (f"(Chuẩn {expected_lines} dòng)" if passed_lines else "(Sai số lượng dòng!)"))
-    print(f"  - Cấu trúc khóa: " + ("Đầy đủ 100% (doc_id, name, link, text)" if all_keys_valid else "Có file bị thiếu khóa"))
-    print(f"  - Kiểu dữ liệu ID: " + ("100% là chuỗi (str) - Chống bẫy 0 điểm im lặng" if all_ids_are_str else "Phát hiện ID kiểu số (int)!"))
-    print(f"  - Làm phẳng văn bản (\\r\\n\\n): " + ("Hoàn hảo 100%" if raw_newlines_found == 0 else f"Còn {raw_newlines_found} dòng bị dính ký tự rác"))
-    print(f"  - Đồng bộ URL (lowercase): " + ("Đã chuyển viết thường hoàn chỉnh" if links_uppercase == 0 else f"Còn {links_uppercase} link chứa chữ viết hoa"))
-    print(f"  - Thống kê file khuyết name: {empty_names} file")
-    print(f"  - Thống kê file rỗng passage: {empty_passages} file " + ("(Đã loại sạch 20 file rỗng khỏi corpus)" if passed_empty_passages else "Lệch số lượng rỗng!"))
-    print(f"  - Quét sạch rác Crawler bảo mật: " + (f"Sạch 100% (0/{expected_lines} file còn dính cụm rác đã biết)" if passed_security_junk else f"Còn sót {len(leaked_security_popups)} file dính rác gốc: {leaked_security_popups}"))
-    print("-" * 50)
-
-    if len(potential_false_positives) > 0:
-        print(f"  - Nghi ngờ False-Positive (Soi tay): Có {len(potential_false_positives)} file chứa từ 'đăng nhập' ({potential_false_positives[:10]})")
-    print("-" * 50)
-
-    # Đánh giá tổng quan
-    success = passed_lines and passed_keys and passed_ids and passed_newlines and passed_links and passed_empty_passages and passed_security_junk
-    if success:
-        print("\nKẾT LUẬN: clean_corpus SẠCH THEO KẾ HOẠCH RÀNG BUỘC (CODA-READY)!")
-        print("="*80)
-        return True
-    else:
-        print("\nCẢNH BÁO: Dữ liệu chưa hoàn toàn sạch, vui lòng kiểm tra lại parser.")
-        print("="*80)
-        return False
+    print("\n" + "=" * 80 + "\nTHẨM ĐỊNH corpus_clean.jsonl\n" + "=" * 80)
+    scan = scan_corpus(corpus_clean_path)
+    _print_corpus_scan(scan, expected_lines)
+    passed = scan.passed(expected_lines)
+    print("\nKẾT LUẬN: " + ("corpus sạch theo ràng buộc." if passed else "dữ liệu chưa sạch, kiểm tra lại parser."))
+    return passed
 
 
-# ===========================================================================
-# 3. CORE PARSER
-# ===========================================================================
+# ─────────────────────────────────────────────────────────────────────────────
+# Chạy cả corpus
+# ─────────────────────────────────────────────────────────────────────────────
+def _iter_raw_docs(corpus_dir: Path):
+    """Duyệt `context_*.json` theo thứ tự tên file; bỏ qua (có báo) file hỏng hoặc thiếu `id`."""
+    for fp in sorted(corpus_dir.glob("context_*.json")):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                doc = json.load(f)
+        except (OSError, ValueError) as e:  # ValueError gồm cả JSONDecodeError và lỗi giải mã UTF-8
+            print(f"Lỗi đọc file {fp.name}: {e}")
+            continue
+        if doc.get("id") is None:
+            print(f"File {fp.name} bị lỗi: Khuyết trường 'id'!")
+            continue
+        yield doc
 
-def parse_corpus(corpus_dir: Path, out_path: Path):
-    """
-    Hàm xử lý cốt lõi quét qua toàn bộ file context thô và gộp thành file .jsonl sạch
+
+def parse_corpus(corpus_dir: Path, out_path: Path, decisions_path: Path = DEFAULT_DECISIONS) -> int:
+    """Gộp, làm sạch, loại trừ, ghi `corpus_clean.jsonl`; in SHA-256 rồi thẩm định.
+
+    Args:
+        corpus_dir: Thư mục chứa `context_*.json`.
+        out_path: File JSONL đích.
+        decisions_path: File quyết định loại trừ.
+
+    Returns:
+        Số văn bản đã ghi.
+
+    Raises:
+        FileNotFoundError: Thiếu thư mục dữ liệu thô hoặc file quyết định.
     """
     if not corpus_dir.exists():
         raise FileNotFoundError(f"Không tìm thấy thư mục dữ liệu thô tại: {corpus_dir}")
-        
-    print(f"Đang quét các file thô trong thư mục: {corpus_dir}")
-    files = sorted(corpus_dir.glob("context_*.json"))
-    total_files = len(files)
-    print(f"Phát hiện {total_files} file context thô.")
+    decisions = load_decisions(decisions_path)
+    excluded = set(decisions["docs_exclude_from_corpus"])
+    expected = decisions["n_corpus_after_exclusion"]
 
-    # ID lỗi (rỗng + trùng-dư) (docs/exclusion_decisions.json).
-    decisions = json.loads(Path("docs/exclusion_decisions.json").read_text(encoding="utf-8"))
-    excluded_doc_ids = set(decisions["docs_exclude_from_corpus"])
-    expected_lines_after_exclusion = decisions["n_corpus_after_exclusion"]
-
-    # Tạo thư mục cha chứa file out nếu chưa tồn tại
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    
     count = 0
     with open(out_path, "w", encoding="utf-8") as out_f:
-        for fp in files:
-            with open(fp, "r", encoding="utf-8") as in_f:
-                try:
-                    doc = json.load(in_f)
-                except Exception as e:
-                    print(f"Lỗi đọc file {fp.name}: {e}")
-                    continue
-                
-                # 1. Ép kiểu str cho id ngay tại điểm đọc (Phòng bẫy 0 điểm im lặng)
-                raw_id = doc.get("id")
-                if raw_id is None:
-                    print(f"File {fp.name} bị lỗi: Khuyết trường 'id'!")
-                    continue
-                doc_id = str(raw_id)
-                if doc_id in excluded_doc_ids:
-                    continue
-                
-                # 2. Xử lý khuyết name (Khuyết 13.2%: quy về chuỗi rỗng "", tránh "ô nhiễm từ vựng")
-                name = doc.get("name")
-                if name is None or not str(name).strip():
-                    clean_name = ""
-                else:
-                    clean_name = str(name).strip()
-                
-                # 3. Xử lý khuyết passage/text (0.2% khuyết)
-                passage = doc.get("passage")
-                if passage is None:
-                    passage = doc.get("text") or ""
-                
-                # Làm sạch văn bản bằng Regex
-                clean_passage = clean_text(str(passage))
-                
-                # 4. Chuẩn hóa link về chữ thường
-                link = str(doc.get("link") or "").strip().lower()
-                
-                # Khởi tạo bản ghi sạch đúng theo INTERFACES.md
-                clean_record = {
-                    "doc_id": doc_id,
-                    "name": clean_name,
-                    "link": link,
-                    "text": clean_passage
-                }
-                
-                # Ghi stream từng dòng JSONL
-                out_f.write(json.dumps(clean_record, ensure_ascii=False) + "\n")
-                count += 1
-                
-    print(f" Đã ghi thành công {count} dòng vào file: {out_path}")
-    
-    # 5. Xác minh bắt buộc (SHA-256 Checksum)
-    print(" Đang tính toán mã vân tay SHA-256...")
+        for doc in _iter_raw_docs(corpus_dir):
+            if str(doc["id"]) in excluded:
+                continue
+            out_f.write(json.dumps(clean_record(doc), ensure_ascii=False) + "\n")
+            count += 1
+
     checksum = calculate_sha256(out_path)
-    print("\n" + "=" * 80)
-    print(f" BÁO CÁO NGHIỆM THU TIỀN XỬ LÝ (P2) CODA-READY:")
-    print(f"  - Tổng số dòng ghi được: {count} / {expected_lines_after_exclusion} dòng")
-    if count != expected_lines_after_exclusion:
-        print(f"  CẢNH BÁO: số dòng ({count}) khác kỳ vọng ({expected_lines_after_exclusion}) - kiểm tra excluded_doc_ids hoặc corpus nguồn.")
-    print(f"  - SHA-256 Checksum: {checksum}")
-    print("=" * 80)
-    
-    # 6. Kích hoạt bộ QA kiểm định tự động chuyên sâu
-    verify_processed_corpus(out_path, expected_lines_after_exclusion)
-    
-    print("Đưa 2 thông số (Số dòng và mã SHA-256 Checksum) dán vào file README.md mục 8!")
+    print(f"Đã ghi {count} / {expected} văn bản vào {out_path}")
+    if count != expected:
+        print(f"  CẢNH BÁO: số dòng ({count}) khác kỳ vọng ({expected}) — kiểm tra danh sách loại hoặc dữ liệu nguồn.")
+    print(f"SHA-256: {checksum}   (đối chiếu README mục 'Con số kỳ vọng')")
+    verify_processed_corpus(out_path, expected)
+    return count
 
 
-# ===========================================================================
-# 4. CLI ENTRYPOINT
-# ===========================================================================
-
-def main():
-    ap = argparse.ArgumentParser(description="Bộ tiền xử lý và gộp kho văn bản thô cho P2")
-    ap.add_argument("--corpus-dir", type=Path, default=Path("data/selected-contexts"),
-                    help="Thư mục chứa các file context_*.json gốc")
-    ap.add_argument("--out", type=Path, default=Path("data/corpus_clean.jsonl"),
-                    help="Đường dẫn file đầu ra sau khi làm sạch")
+def main() -> None:
+    """CLI."""
+    ap = argparse.ArgumentParser(description="Gộp và làm sạch kho văn bản thô (P2)")
+    ap.add_argument("--corpus-dir", type=Path, default=Path("data/selected-contexts"))
+    ap.add_argument("--out", type=Path, default=Path("data/corpus_clean.jsonl"))
+    ap.add_argument("--decisions", type=Path, default=DEFAULT_DECISIONS, help="sinh bởi scripts/eda.py")
     args = ap.parse_args()
-    
-    parse_corpus(args.corpus_dir, args.out)
+    parse_corpus(args.corpus_dir, args.out, args.decisions)
 
 
 if __name__ == "__main__":

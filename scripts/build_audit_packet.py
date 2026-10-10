@@ -1,5 +1,4 @@
-"""
-scripts/build_audit_packet.py — sinh gói đọc cho vòng audit nhãn thủ công.
+"""Sinh gói đọc HTML cho vòng audit nhãn thủ công.
 
 Vấn đề: văn bản luật dài 20–50k ký tự. Đọc đủ 30 văn bản mất ~6 tiếng.
 Giải: trích các đoạn có mật độ từ khoá của câu hỏi cao nhất, kèm đoạn đầu
@@ -46,6 +45,7 @@ STOP = {
 
 
 def norm(s: str) -> str:
+    """NFC, chữ thường, bỏ dấu câu, gộp khoảng trắng."""
     s = unicodedata.normalize("NFC", s).lower()
     s = re.sub(r"[^\w\sÀ-ỹ]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
@@ -59,6 +59,7 @@ def keywords(q: str) -> list[str]:
 
 # ────────────────────────────────────────────────────────────── nạp dữ liệu ──
 def load_docs() -> dict[str, dict]:
+    """Đọc văn bản từ `corpus_clean.jsonl` (hoặc file thô nếu chưa có)."""
     if CORPUS.exists():
         print(f"Đọc {CORPUS}")
         out = {}
@@ -87,6 +88,7 @@ def load_docs() -> dict[str, dict]:
 
 
 def load_train() -> dict[str, dict]:
+    """Đọc `train.json` thành `{qid: {question, gold}}`."""
     raw = json.loads(TRAIN.read_text(encoding="utf-8"))
     return {
         str(k): {"question": v["question"], "gold": [str(a) for a in v["answer"]]}
@@ -108,6 +110,7 @@ MAX_PARA = 2000
 
 
 def _window(t: str, size: int = MAX_PARA) -> list[str]:
+    """Cắt chuỗi thành các đoạn dài tối đa `size` ký tự."""
     return [t[i:i + size] for i in range(0, len(t), size)]
 
 
@@ -137,12 +140,14 @@ def split_paragraphs(text: str) -> list[str]:
 
 
 def score_para(p: str, ks: list[str], w: dict | None = None) -> float:
+    """Mật độ từ khoá (có trọng số) của một đoạn — chuẩn hoá theo căn độ dài."""
     np_ = norm(p)
     raw = sum(np_.count(k) * len(k) * (w or {}).get(k, 1.0) for k in ks)
     return raw / (len(np_) ** 0.5 + 1)   # mật độ, không phải số đếm thô
 
 
 def excerpts(text: str, ks: list[str], top: int = 4):
+    """Đoạn đầu văn bản + `top` đoạn có mật độ từ khoá cao nhất."""
     paras = split_paragraphs(text)
     head = paras[0][:600]
     # trọng số kiểu IDF: từ có mặt ở gần như mọi đoạn thì gần như vô giá trị
@@ -157,6 +162,7 @@ def excerpts(text: str, ks: list[str], top: int = 4):
 
 
 def highlight(text: str, ks: list[str]) -> str:
+    """Escape HTML rồi tô đậm các từ khoá."""
     esc = html.escape(text)
     for k in ks[:12]:
         esc = re.sub(f"({re.escape(k)})", r"<mark>\1</mark>", esc, flags=re.IGNORECASE)
@@ -222,6 +228,7 @@ mở link đầy đủ và Ctrl-F thêm một lần.</li>
 
 
 def build(train, docs, qids) -> str:
+    """Dựng trang HTML gói đọc cho danh sách qid."""
     out = [f"<html><head><meta charset='utf-8'><title>Audit nhãn</title>",
            f"<style>{CSS}</style></head><body>",
            f"<h1>Gói đọc audit nhãn — {len(qids)} câu</h1>", RUBRIC]
@@ -266,6 +273,7 @@ def build(train, docs, qids) -> str:
 
 
 def main():
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=30)
     ap.add_argument("--seed", type=int, default=42)

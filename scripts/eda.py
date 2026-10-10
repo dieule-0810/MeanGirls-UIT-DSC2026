@@ -1,5 +1,4 @@
-"""
-scripts/eda.py - Khám phá dữ liệu trước khi build (xem plan.md mục 0.5).
+"""Khám phá dữ liệu thô trước khi build (plan.md mục 0.5); sinh docs/exclusion_decisions.json.
 
 Chạy trên corpus + train.json GỐC, trước khi chunker/parser bị chỉnh lần cuối.
 Không phụ thuộc corpus_clean.jsonl / chunks.jsonl vì mục đích là phát hiện vấn đề
@@ -10,7 +9,7 @@ Cách chạy:
         --corpus-dir data/selected-contexts \
         --train data/train.json \
         --public data/public-official.json \
-        --out docs/eda_notes.md
+        --out outputs/eda/eda_notes.md
 
 Output: in tóm tắt ra stdout + ghi báo cáo markdown vào --out. Nếu mục 9 (ket_luan) có
 ready_to_apply=True, còn ghi thêm docs/exclusion_decisions.json - file nguồn duy nhất mà
@@ -69,6 +68,7 @@ def load_train(train_path: Path) -> dict[str, dict]:
 # ---------------------------------------------------------------------------
 
 def doc_length_stats(docs: list[dict]) -> dict:
+    """Phân bố độ dài văn bản (từ, ký tự)."""
     lengths_words = []
     lengths_chars = []
     for d in docs:
@@ -101,6 +101,7 @@ def doc_length_stats(docs: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def dieu_structure_stats(docs: list[dict]) -> dict:
+    """Tỉ lệ văn bản có cấu trúc `Điều N` và số Điều mỗi văn bản."""
     n_with_dieu = 0
     dieu_counts = []
     for d in docs:
@@ -125,6 +126,7 @@ def dieu_structure_stats(docs: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def missing_field_stats(docs: list[dict]) -> dict:
+    """Thống kê khuyết khoá / khuyết giá trị của từng trường."""
     n = len(docs) or 1
     
     # Thống kê khuyết KEY trong JSON
@@ -221,6 +223,7 @@ def missing_field_stats(docs: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def answer_count_stats(train: dict[str, dict]) -> dict:
+    """Phân bố số đáp án mỗi câu hỏi trong train."""
     counts = []
     empty_questions = 0
     for qid, item in train.items():
@@ -255,6 +258,7 @@ def answer_count_stats(train: dict[str, dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def _group_duplicate_passages(docs: list[dict]) -> tuple[list[list[str]], dict[str, str]]:
+    """Nhóm văn bản có nội dung trùng tuyệt đối (sau chuẩn hoá khoảng trắng)."""
     def normalize(text: str) -> str:
         return re.sub(r"\s+", " ", text or "").strip().lower()
 
@@ -273,6 +277,7 @@ def _group_duplicate_passages(docs: list[dict]) -> tuple[list[list[str]], dict[s
 
 def near_duplicate_stats(docs: list[dict], train: dict[str, dict],
                         dup_passage_groups: list[list[str]], id_to_link: dict[str, str]) -> dict:
+    """Văn bản trùng/gần trùng (theo nội dung và link) và mức train trỏ vào chúng."""
     link_groups = {}
     train_referenced_ids = {str(a) for item in train.values() for a in (item.get("answer") or [])}
 
@@ -379,6 +384,7 @@ def near_duplicate_stats(docs: list[dict], train: dict[str, dict],
 # ---------------------------------------------------------------------------
 
 def question_length_stats(train: dict[str, dict]) -> dict:
+    """Phân bố độ dài câu hỏi, câu rỗng."""
     items = list(train.values())
     lengths = [len((item.get("question") or "").split()) for item in items]
     lengths = [l for l in lengths if l > 0]
@@ -401,6 +407,7 @@ def question_length_stats(train: dict[str, dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def doc_id_coverage_stats(docs: list[dict], train: dict[str, dict]) -> dict:
+    """doc_id trong train có nằm trong corpus không (id mồ côi)."""
     corpus_ids = {str(d.get("id")) for d in docs}
     train_ids = set()
     for item in train.values():
@@ -424,6 +431,7 @@ def doc_id_coverage_stats(docs: list[dict], train: dict[str, dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def check_name_passage_overlap(docs: list[dict]) -> dict:
+    """Văn bản thiếu `name` và văn bản rỗng có trùng nhau không."""
     missing_name_files = {d["_source_file"] for d in docs if "name" not in d}
     empty_passage_files = {d["_source_file"] for d in docs if "passage" in d and not d.get("passage")}
     
@@ -445,6 +453,7 @@ def check_name_passage_overlap(docs: list[dict]) -> dict:
 def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict],
                                     dup_passage_groups: list[list[str]],
                                     id_to_link: dict[str, str]) -> dict:
+    """Câu train nào trỏ vào văn bản khuyết trường / rỗng / trùng — và kết luận loại trừ."""
     missing_name_ids = {str(d.get("id")) for d in docs if "name" not in d}
     empty_passage_ids = {str(d.get("id")) for d in docs if "passage" in d and not d.get("passage")}
 
@@ -556,6 +565,7 @@ def verify_gold_with_missing_fields(docs: list[dict], train: dict[str, dict],
 # ---------------------------------------------------------------------------
 
 def compare_train_public_stats(docs: list[dict], train: dict[str, dict], public_path: Path) -> dict:
+    """Đối chiếu phân bố train với public test."""
     if not public_path.exists():
         return {"status": f"Chưa nạp {public_path.name}. Đặt file vào data/ để chạy đối chiếu."}
 
@@ -641,9 +651,7 @@ def top_length_outliers(docs: list[dict], top_n: int = 5) -> dict:
 ### ---------------------------------------------------------------------------
 
 def check_crawler_pollution(docs: list[dict]) -> dict:
-    """
-    Rà soát và đếm số lượng file dính lỗi cào rác (Crawler Pollution) chứa thông báo bảo mật.
-    """
+    """Đếm số file dính rác crawler (thông báo bảo mật/đăng nhập)."""
     infected_files = []
     keywords = ["rò rỉ mật khẩu", "đăng nhập", "quý khách"]
     
@@ -659,6 +667,7 @@ def check_crawler_pollution(docs: list[dict]) -> dict:
     }
 
 def save_exclusion_decisions(ket_luan: dict, dup_groups: list[list[str]], out_path: Path = Path("docs/exclusion_decisions.json")) -> None:
+    """Ghi `docs/exclusion_decisions.json` — nguồn duy nhất mà parse_corpus/split_data đọc."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps({
         "docs_exclude_from_corpus": ket_luan["docs_recommended_exclude_from_corpus"],
@@ -673,6 +682,7 @@ def save_exclusion_decisions(ket_luan: dict, dup_groups: list[list[str]], out_pa
 # ---------------------------------------------------------------------------
 
 def render_markdown(results: dict) -> str:
+    """Kết quả EDA → `eda_notes.md`."""
     lines = ["# EDA Notes - chạy trước khi chunker/parser bị chỉnh lần cuối", ""]
     lines.append("> Sinh bởi `scripts/eda.py`. Điền thủ công phần nhận xét sau mỗi mục.")
     lines.append("")
@@ -692,11 +702,12 @@ def render_markdown(results: dict) -> str:
     return "\n".join(lines)
 
 def main():
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--corpus-dir", type=Path, default=Path("data/selected-contexts"))
     ap.add_argument("--train", type=Path, default=Path("data/train.json"))
     ap.add_argument("--public", type=Path, default=Path("data/public-official.json"))
-    ap.add_argument("--out", type=Path, default=Path("docs/eda_notes.md"))
+    ap.add_argument("--out", type=Path, default=Path("outputs/eda/eda_notes.md"))
     args = ap.parse_args()
 
     print(f"Đang đọc corpus từ {args.corpus_dir} ...")

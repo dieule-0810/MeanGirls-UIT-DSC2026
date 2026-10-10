@@ -1,36 +1,21 @@
-# v0.1 — BM25 baseline. Không hằng số nào được hard-code trong code (INTERFACES mục 6).
+# v0.1 — BM25 baseline đầu tiên: tokenizer regex, gộp max, không cắt ứng viên. BẢN CHUẨN để
+# tái lập con số v0.1 (dev R@5 0,7863 · R@50 0,9503 trên kho 524.422 chunk).
+#
+# `pool: max` đã bị loại ở mọi chế độ (INTERFACES.md §3b) — file này chỉ còn để tái lập.
+extends: base.yaml
 exp_id: v0.1_bm25
-seed: 42
 
 paths:
-  corpus_raw:   data/selected-contexts        # thư mục chứa 8.532 file context_*.json
-  train_raw:    data/train.json
-  questions:    data/public-official.json
-  corpus_clean: data/corpus_clean.jsonl
-  chunks:       data/chunks.jsonl
-  holdout:      data/holdout.json
-  train_split:  data/train_split.json
-  out_dir:      outputs/v0.1_bm25
+  out_dir: outputs/v0.1_bm25
 
-data:
-  holdout_size: 1000        # mô phỏng đúng kích thước public test
-
-chunking:
-  max_words: 180            # ~256 subword với tokenizer đa ngữ
-  overlap_words: 45
-  prepend_name: false       # chưa implement ở chunker; đã test không cần ở tầng rerank, chưa test ở BM25
+pipeline:
+  retriever: bm25
 
 retrieval:
-  top_k_retrieve: 100       # KPI của P3 — trần cứng cho toàn hệ thống
-  top_k_submit: 5           # BTC chặn cứng ở 5
-  ranking_full_k: 50        # độ sâu dump ranking_full.json cho P4 (tách L1-RETRIEVE/L1-RERANK)
   bm25:
     k1: 1.5
     b: 0.75
-    pool: max               # max | sum | mean_topN | logsumexp, cách gộp chunk → doc
-    # Ghim tường minh từ v0.2 trở đi: khung tokenizer mới (src/retrieval/tokenizers.py)
-    # mặc định gộp vị trí dấu thanh ("hoà" → "hòa"). v0.1 KHÔNG có bước đó. Ghi rõ ở đây
-    # để config v0.1 vẫn tái lập đúng con số v0.1, thay vì trôi theo mặc định mới.
+    pool: max
     tokenizer: regex
     tokenizer_opts:
       fold_tone: false

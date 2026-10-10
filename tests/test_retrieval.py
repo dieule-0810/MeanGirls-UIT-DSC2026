@@ -1,8 +1,6 @@
 """
 Kiểm chứng khung tầng 1: hợp đồng `BaseRetriever` + tokenizer tiếng Việt.
 
-CHỦ SỞ HỮU: P3.
-
 Chạy được KHÔNG cần `data/` — corpus giả dựng ngay trong file. Đó là chủ ý: dữ liệu BTC không
 được commit, nên tầng retrieval phải tự kiểm chứng được ở máy sạch, và mọi bất biến ở đây
 (`doc_id` là str, không trùng, sort giảm dần, không quá top_k) là những thứ hỏng ÂM THẦM
@@ -68,7 +66,7 @@ CHUNKS = [
 
 
 def build_bm25(**opts) -> BM25Retriever:
-    r = BM25Retriever(verbose=False, **opts)
+    r = BM25Retriever.from_spec({"verbose": False, **opts})
     r.index([dict(c) for c in CHUNKS])
     return r
 
@@ -281,7 +279,7 @@ def test_query_khong_khop_term_nao_tra_rong():
 
 def test_goi_search_truoc_index_bao_loi():
     with pytest.raises(RuntimeError, match="index"):
-        BM25Retriever(verbose=False).search(["a"], top_k=5)
+        BM25Retriever.from_spec({"verbose": False}).search(["a"], top_k=5)
 
 
 def test_search_chunks_tra_chunk_id():
@@ -317,7 +315,7 @@ def test_top_k_khong_hop_le():
 def test_pool_sai_ten_fail_ngay_luc_dung_retriever():
     """Fail trước khi index — không ai muốn biết mình gõ sai sau 3 phút đánh chỉ mục."""
     with pytest.raises(ValueError, match="Chiến lược gộp"):
-        BM25Retriever(pool="maximum", verbose=False)
+        BM25Retriever.from_spec({"pool": "maximum", "verbose": False})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -365,20 +363,20 @@ def test_stats_du_thong_tin_ghi_log():
 # ─────────────────────────────────────────────────────────────────────────────
 def test_ep_str_cho_doc_id_kieu_int():
     """INTERFACES.md mục 0 — int lọt xuống submission là 0 điểm im lặng."""
-    r = BM25Retriever(verbose=False)
+    r = BM25Retriever.from_spec({"verbose": False})
     r.index([{"doc_id": 740, "chunk_id": "740::0000", "text": "hoá đơn điện tử"}])
     assert r.chunk_doc_ids == ["740"]
     assert r.search(["hoá đơn"], top_k=1)[0][0][0] == "740"
 
 
 def test_thieu_chunk_id_thi_tu_sinh():
-    r = BM25Retriever(verbose=False)
+    r = BM25Retriever.from_spec({"verbose": False})
     r.index([{"doc_id": "740", "position": 3, "text": "hoá đơn điện tử"}])
     assert r.chunk_ids == ["740::0003"]
 
 
 def test_chunk_id_trung_bao_loi():
-    r = BM25Retriever(verbose=False)
+    r = BM25Retriever.from_spec({"verbose": False})
     with pytest.raises(ValueError, match="trùng"):
         r.index([dict(CHUNKS[0]), dict(CHUNKS[0])])
 
@@ -397,7 +395,7 @@ def test_build_retriever_ten_la():
 
 def test_search_with_anchor_tra_chunk_dai_dien():
     """INTERFACES §3b: mỗi doc phải kèm chunk đại diện để reranker có đoạn cụ thể mà chấm."""
-    r = BM25Retriever(pool="max", verbose=False)
+    r = BM25Retriever.from_spec({"pool": "max", "verbose": False})
     r.index(CHUNKS)
     res = r.search_with_anchor(["huỷ hoá đơn điện tử"], top_k=3)[0]
     assert res, "không truy hồi được gì"
@@ -420,7 +418,7 @@ def test_anchor_pha_hoa_bang_chunk_id_nho_nhat():
         {"chunk_id": "900::0007", "doc_id": "900", "position": 7, "text": "thuế thu nhập cá nhân"},
         {"chunk_id": "900::0002", "doc_id": "900", "position": 2, "text": "thuế thu nhập cá nhân"},
     ]
-    r = BM25Retriever(pool="max", verbose=False)
+    r = BM25Retriever.from_spec({"pool": "max", "verbose": False})
     r.index(same)
     _, _, cid = r.search_with_anchor(["thuế thu nhập cá nhân"], top_k=1)[0][0]
     assert cid == "900::0002", f"phá hoà sai: {cid}"

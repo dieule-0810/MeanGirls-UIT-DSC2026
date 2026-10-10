@@ -5,8 +5,6 @@ MỤC ĐÍCH: không phải test code của team, mà là ĐO hành vi mã chấ
 đóng băng nó thành đặc tả. Mọi giả định trong `make_submission.py` phải truy
 được về một test ở đây.
 
-Chủ sở hữu: P4 (KPI Recall@5 + Precision).
-
 CÁCH DÙNG
     pip install pytest
     # đặt scoring.py của BTC vào vendor/btc_scoring/scoring.py

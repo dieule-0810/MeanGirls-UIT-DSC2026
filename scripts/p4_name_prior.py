@@ -65,6 +65,7 @@ def toks(text: str, min_len: int = 3) -> set[str]:
 
 
 def load_names(corpus: str) -> dict[str, set[str]]:
+    """`{doc_id: tập token của name}` (đã bỏ dấu)."""
     out = {}
     for line in open(corpus, encoding="utf-8"):
         d = json.loads(line)
@@ -90,6 +91,7 @@ def rescore(ranking: dict, questions: dict, names: dict, lam: float) -> dict:
 
 
 def recall_at(ranking: dict, questions: dict, k: int, keys=None) -> float:
+    """Recall@k trung bình (tuỳ chọn trên tập con `keys`)."""
     keys = list(keys or questions)
     tot = 0.0
     for qid in keys:
@@ -103,6 +105,7 @@ GRID = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.70]
 
 
 def main() -> None:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--ranking", required=True)
     ap.add_argument("--questions", required=True)

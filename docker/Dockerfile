@@ -5,7 +5,7 @@
 # ⚠️ BẪY ARM64 — máy M4 Pro build mặc định ra linux/arm64, BTC chạy x86_64.
 #    Image sẽ không khởi động ở phía họ mà team KHÔNG phát hiện ra vì máy mình chạy hoàn hảo.
 #    BẮT BUỘC build bằng:
-#        docker buildx build --platform linux/amd64 -f docker/Dockerfile -t dsc2026:v0.1 .
+#        docker buildx build --platform linux/amd64 -f docker/Dockerfile -t dsc2026:v0.8 .
 #    Kiểm chứng ngay ở v0.1 khi image còn nhỏ, không để đến v1.0.
 
 FROM --platform=linux/amd64 python:3.11.9-slim
@@ -20,19 +20,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-dense.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-dense.txt
+RUN pip install --no-cache-dir pytest==9.1.1   # cho smoke test lúc build bên dưới
 
 COPY src/ ./src/
 COPY configs/ ./configs/
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
+COPY docs/ ./docs/
 
 # data/ và checkpoints/ được mount lúc chạy, KHÔNG bake vào image
 # (dữ liệu là của BTC; trọng số làm image phình lên nhiều GB)
 VOLUME ["/app/data", "/app/outputs"]
+# Trọng số HuggingFace tải lúc chạy (revision đã pin trong configs/) — mount cache để không tải lại.
+ENV HF_HOME=/app/.hf_cache
 
 # Smoke test chạy được ngay lúc build → image hỏng thì biết tại chỗ
 RUN python -m src.verify_env && python -m pytest tests/ -q
 
-CMD ["bash", "scripts/run_v0.1.sh"]
+# Từ dữ liệu thô trong /app/data đến outputs/v0.8_hybrid_rrf/submission.zip (README mục 7).
+CMD ["python", "scripts/run_e2e.py", "--questions", "data/private-official.json"]

@@ -1,7 +1,4 @@
-"""
-Kiểm tra môi trường. Gọi ở ĐẦU mọi script.
-
-CHỦ SỞ HỮU: P1.
+"""Kiểm tra môi trường chạy (phiên bản Python, gói bắt buộc).
 
 Lý do tồn tại: BTC clone repo về tháng 10 và chạy. Nếu Python/thư viện lệch, ta muốn
 họ biết sau 2 GIÂY với thông báo rõ ràng, chứ không phải sau 40 phút với một traceback
@@ -17,6 +14,14 @@ REQUIRED_PACKAGES = {"numpy": None, "yaml": None}   # v0.1 cố ý giữ tối t
 
 
 def check(strict: bool = True) -> bool:
+    """Kiểm Python 3.11.x và các gói bắt buộc; in thông tin torch nếu có.
+
+    Args:
+        strict: True thì lệch phiên bản Python là lỗi (❌), False thì chỉ cảnh báo.
+
+    Returns:
+        True nếu môi trường đạt.
+    """
     problems: list[str] = []
 
     if sys.version_info[:2] != REQUIRED_PYTHON:
@@ -47,6 +52,11 @@ def check(strict: bool = True) -> bool:
 
 
 def require() -> None:
+    """Gọi ở đầu script: dừng ngay nếu môi trường không đạt.
+
+    Raises:
+        SystemExit: Môi trường không đạt.
+    """
     if not check(strict=True):
         raise SystemExit("Môi trường không đạt. Xem README mục 2 'Yêu cầu hệ thống'.")
 

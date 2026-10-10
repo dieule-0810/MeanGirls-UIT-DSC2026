@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-So hai lần chạy trên cùng tập câu hỏi. CHỦ SỞ HỮU: P3.
+"""So hai lần chạy trên cùng tập câu hỏi.
 
 Câu hỏi thật sự cần trả lời sau khi có dense KHÔNG phải "dense có hơn BM25 không" — mà là
 "dense có tìm được thứ BM25 BỎ SÓT không". Hai hệ ngang điểm nhưng sai ở những câu khác nhau
@@ -26,11 +25,13 @@ sys.path.insert(0, str(REPO))
 
 
 def load_rank(p: Path) -> dict[str, list[str]]:
+    """Đọc ranking (`[[doc_id, ...], ...]` hoặc `[doc_id, ...]`) thành `{qid: [doc_id]}`."""
     raw = json.loads(p.read_text(encoding="utf-8"))
     return {str(q): [str(r[0]) if isinstance(r, (list, tuple)) else str(r) for r in v] for q, v in raw.items()}
 
 
 def recall(pred: dict[str, list[str]], gold: dict[str, list[str]], k: int) -> float:
+    """Recall@k trung bình."""
     tot = 0.0
     for q, g in gold.items():
         if g:
@@ -39,6 +40,7 @@ def recall(pred: dict[str, list[str]], gold: dict[str, list[str]], k: int) -> fl
 
 
 def main() -> int:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--a", required=True)
     ap.add_argument("--b", required=True)

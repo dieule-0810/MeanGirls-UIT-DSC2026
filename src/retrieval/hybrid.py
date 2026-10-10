@@ -1,54 +1,58 @@
-"""
-Hợp nhất nhiều retriever tầng 1 bằng RRF — CHỦ SỞ HỮU: P3. Khớp `BaseRetriever` (INTERFACES §3).
+"""Hợp nhất nhiều retriever tầng 1 bằng RRF, khớp `BaseRetriever` (INTERFACES.md §3). P3.
 
 Theo §3, gộp chunk→doc **và** hợp nhất nhiều nguồn đều là việc NỘI BỘ của retriever: người gọi
-chỉ thấy `search()`. Nhờ vậy `scripts/run_pipeline.py` không cần biết gì về fusion — nó chỉ đổi
-`pipeline.retriever: hybrid` trong YAML.
+chỉ thấy `search()`, và `scripts/run_pipeline.py` chỉ cần `pipeline.retriever: hybrid`.
 
-HỢP NHẤT THỨ HẠNG, KHÔNG CỘNG ĐIỂM (giả thuyết H4, docs/pipeline_e2e_plan.md vòng 3). BM25 cho
-điểm dương không chặn trên, cosine ∈ [−1,1], logit cross-encoder có dấu — cộng thẳng là để thang
-điểm lớn nhất nuốt các thang còn lại. RRF chỉ dùng thứ hạng nên miễn nhiễm:
+HỢP NHẤT THỨ HẠNG, KHÔNG CỘNG ĐIỂM (giả thuyết H4). BM25 cho điểm dương không chặn trên,
+cosine ∈ [−1, 1] — cộng thẳng là để thang lớn nhất nuốt các thang còn lại. RRF chỉ dùng thứ
+hạng nên miễn nhiễm:
 
     score(x) = Σ_nguồn  w_nguồn / (k + rank_nguồn(x))
 
-HAI MỨC HỢP NHẤT, đo được, không đoán (đây là phần prototype `scripts/p4_fuse.py` của P4 chưa
-làm — nó chỉ hợp nhất ở mức doc):
+Hai mức hợp nhất, cùng đi qua một đường của khung (`_score_chunks` → `pool_candidates` →
+`check_contract`) nên so sánh chúng là so hai chiến lược, không phải hai đoạn code:
 
-  fuse_level: chunk   RRF trên thứ hạng CHUNK, rồi mới gộp chunk→doc bằng `pool` của hybrid.
-                      Một văn bản có nhiều chunk được cả hai nguồn xếp cao sẽ cộng dồn bằng
-                      chứng — đúng tinh thần `mean_topN`. Đổi lại, văn bản dài có nhiều cơ hội
-                      lọt vào top chunk của cả hai nguồn hơn văn bản ngắn.
-  fuse_level: doc     Mỗi nguồn tự gộp chunk→doc bằng `pool` CỦA CHÍNH NÓ (đúng §3: mỗi thang
-                      điểm có cách gộp tối ưu riêng), rồi RRF trên thứ hạng DOC. Đây là cách
-                      `p4_fuse.py` làm, tái lập được để so sánh.
+* `fuse_level: chunk` — RRF trên thứ hạng CHUNK rồi mới gộp chunk→doc bằng `pool` của hybrid.
+* `fuse_level: doc` — mỗi nguồn tự gộp chunk→doc bằng `pool` của chính nó, rồi RRF trên thứ
+  hạng DOC. Đây là cấu hình nộp bài v0.8.
 
-Cả hai mức đều đi qua đúng một đường của khung (`_score_chunks` → `pool_candidates` →
-`check_contract`), nên so sánh chúng là so hai chiến lược chứ không phải so hai đoạn code.
+Typical usage example (YAML):
 
     retrieval:
       hybrid:
-        fuse_level: chunk
-        rrf_k: 60
-        pool: mean_top2
+        fuse_level: doc
+        rrf_k: 20
         sources:
-          bm25:  {type: bm25,  weight: 0.6, tokenizer: syllable_bigram, ...}
-          dense: {type: dense, weight: 0.4, repo: ..., revision: ...}
+          bm25:  {type: bm25,  weight: 0.4, tokenizer: syllable_bigram, ...}
+          dense: {type: dense, weight: 0.6, repo: ..., revision: ...}
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Iterable, Sequence
 
 import numpy as np
 
-from src.retrieval.base import BaseRetriever, build_retriever, register_retriever
+from src.retrieval.base import (
+    BaseRetriever,
+    PoolingConfig,
+    build_retriever,
+    register_retriever,
+    reject_unknown,
+    split_spec,
+)
 
 FUSE_LEVELS = ("chunk", "doc")
 
 
 def normalize_weights(weights: dict[str, float]) -> dict[str, float]:
-    """
-    Chuẩn hoá tổng trọng số về 1. Không đổi thứ hạng (co giãn đều là phép biến đổi đơn điệu),
-    chỉ để `w=0,6/0,4` trong YAML và điểm in ra log đọc được như nhau ở mọi cấu hình.
+    """Chuẩn hoá tổng trọng số về 1.
+
+    Không đổi thứ hạng (co giãn đều là biến đổi đơn điệu), chỉ để `0,6/0,4` trong YAML và điểm
+    in ra log đọc được như nhau ở mọi cấu hình.
+
+    Raises:
+        ValueError: Tổng trọng số ≤ 0 — mọi câu sẽ rỗng, tức 0 điểm im lặng.
     """
     total = float(sum(weights.values()))
     if total <= 0:
@@ -65,20 +69,20 @@ def rrf_from_ranks(
     rrf_k: int,
     absent_rank: int | None = None,
 ) -> dict:
-    """
-    RRF có trọng số trên nhiều danh sách đã xếp hạng. `ranked[nguồn]` = phần tử tốt nhất trước.
+    """RRF có trọng số trên nhiều danh sách đã xếp hạng.
 
-    `absent_rank`:
-      - `None` (mặc định) — phần tử VẮNG MẶT ở một nguồn thì nguồn đó KHÔNG đóng góp gì.
-        Đây là RRF cổ điển (Cormack 2009).
-      - số nguyên — coi như phần tử đứng ở hạng đó. `scripts/p4_fuse.py` dùng `top_k+1000`,
-        `scripts/p5_knn_fuse.py` dùng `10^6`. Giữ tuỳ chọn này để tái lập ĐÚNG hai prototype đó.
+    Args:
+        ranked: `{nguồn: [phần tử tốt nhất trước, ...]}`.
+        weights: Trọng số từng nguồn; nguồn trọng số 0 bị bỏ qua.
+        rrf_k: Hằng số k của RRF.
+        absent_rank: None = phần tử vắng mặt ở một nguồn thì nguồn đó không đóng góp gì (RRF cổ
+            điển, Cormack 2009). Số nguyên = coi như phần tử đứng ở hạng đó — giữ để tái lập
+            đúng `scripts/p4_fuse.py` (`top_k+1000`) và `scripts/p5_knn_fuse.py` (`10^6`).
+            Lưu ý nó cộng một lượng DƯƠNG cho phần tử vắng mặt, nên chỉ lật được các ca hoà
+            tuyệt đối — nhưng vẫn có thể đổi thứ tự ở vài câu.
 
-        ⚠️ Lưu ý dấu: `absent_rank` cộng một lượng DƯƠNG cho phần tử vắng mặt, tức thưởng nhẹ
-        cho việc vắng mặt. Với k=60 và absent_rank=10^6 thì lượng đó ≈ 1e-6·w, còn hạng 1 cho
-        ≈ 0,016·w — nên nó chỉ lật được những trường hợp HOÀ TUYỆT ĐỐI. Không phải lỗi chết
-        người, nhưng nó có nghĩa là `absent_rank=None` và `absent_rank=10^6` có thể ra thứ tự
-        khác nhau ở vài câu. Khai tường minh còn hơn để hai bản "gần giống nhau".
+    Returns:
+        `{phần tử: điểm RRF}`.
     """
     out: dict = {}
     for name, items in ranked.items():
@@ -101,77 +105,140 @@ def rrf_from_ranks(
     return out
 
 
+@dataclass(frozen=True)
+class FusionConfig:
+    """Cách hợp nhất các nguồn.
+
+    Attributes:
+        fuse_level: `chunk` hoặc `doc`.
+        rrf_k: Hằng số k của RRF, ≥ 1 (k=0 làm hạng 1 trội tuyệt đối).
+        absent_rank: Xem `rrf_from_ranks`.
+        doc_depth: Ở mức doc, số doc mỗi nguồn đưa vào RRF.
+        source_depth: Số chunk ứng viên lấy từ mỗi nguồn; None = `candidate_chunks`.
+    """
+
+    fuse_level: str = "chunk"
+    rrf_k: int = 60
+    absent_rank: int | None = None
+    doc_depth: int = 200
+    source_depth: int | None = None
+
+    def __post_init__(self) -> None:
+        """Kiểm `fuse_level` và `rrf_k` ngay lúc dựng."""
+        if self.fuse_level not in FUSE_LEVELS:
+            raise ValueError(f"fuse_level '{self.fuse_level}' không có. Dùng: {', '.join(FUSE_LEVELS)}")
+        if self.rrf_k < 1:
+            raise ValueError("rrf_k phải >= 1 (k=0 làm hạng 1 trội tuyệt đối, RRF hết tác dụng)")
+
+
+def _build_sources(sources: dict[str, dict]) -> tuple[dict[str, BaseRetriever], dict[str, float]]:
+    """Dựng các retriever con và tách `weight` khỏi spec của chúng.
+
+    Raises:
+        ValueError: Ít hơn 2 nguồn, hoặc có trọng số âm.
+    """
+    if not isinstance(sources, dict) or len(sources) < 2:
+        raise ValueError(
+            f"hybrid cần ÍT NHẤT 2 nguồn, nhận {len(sources) if sources else 0}. "
+            f"Hợp nhất một nguồn với chính nó chỉ đổi thang điểm chứ không đổi thứ hạng — "
+            f"nếu chỉ muốn một retriever thì khai thẳng nó, đừng bọc thêm một lớp."
+        )
+    built: dict[str, BaseRetriever] = {}
+    raw_weights: dict[str, float] = {}
+    for name, spec in sources.items():
+        spec = dict(spec)
+        w = float(spec.pop("weight", 1.0))
+        if w < 0:
+            raise ValueError(f"nguồn '{name}': weight={w} âm. RRF không định nghĩa với trọng số âm.")
+        raw_weights[name] = w
+        built[name] = build_retriever(spec)
+    return built, raw_weights
+
+
 @register_retriever("hybrid")
 class HybridRetriever(BaseRetriever):
-    """
-    Hợp nhất ≥2 retriever con. Bản thân nó cũng là một `BaseRetriever`, nên lồng được
-    (hybrid của hybrid) và cắm thẳng vào `build_retriever` / `run_pipeline.py`.
+    """Hợp nhất ≥2 retriever con. Bản thân nó cũng là `BaseRetriever` nên lồng được.
+
+    Attributes:
+        fusion: Cấu hình hợp nhất.
+        sources: `{tên: retriever con}` theo thứ tự khai trong YAML.
+        weights: Trọng số đã chuẩn hoá về tổng 1.
     """
 
     def __init__(
         self,
         sources: dict[str, dict],
+        fusion: FusionConfig | None = None,
+        pooling: PoolingConfig | None = None,
         *,
-        fuse_level: str = "chunk",
-        rrf_k: int = 60,
-        absent_rank: int | None = None,
-        doc_depth: int = 200,
-        source_depth: int | None = None,
-        pool: str = "max",
-        pool_tau: float = 1.0,
-        candidate_chunks: int = 2000,
         verbose: bool = True,
     ) -> None:
-        super().__init__(pool=pool, pool_tau=pool_tau, candidate_chunks=candidate_chunks)
-        if fuse_level not in FUSE_LEVELS:
-            raise ValueError(f"fuse_level '{fuse_level}' không có. Dùng: {', '.join(FUSE_LEVELS)}")
-        if not isinstance(sources, dict) or len(sources) < 2:
+        super().__init__(pooling)
+        self.fusion = fusion or FusionConfig()
+        # Ở mức doc, mỗi doc chỉ còn một chunk đại diện nên `pool` của hybrid là phép đồng nhất
+        # với MỌI chiến lược. Cho khai giá trị khác là để một tham số đọc như đang làm gì đó.
+        if self.fusion.fuse_level == "doc" and self.pool != "max":
             raise ValueError(
-                f"hybrid cần ÍT NHẤT 2 nguồn, nhận {len(sources) if sources else 0}. "
-                f"Hợp nhất một nguồn với chính nó chỉ đổi thang điểm chứ không đổi thứ hạng — "
-                f"nếu chỉ muốn một retriever thì khai thẳng nó, đừng bọc thêm một lớp."
-            )
-        if rrf_k < 1:
-            raise ValueError("rrf_k phải >= 1 (k=0 làm hạng 1 trội tuyệt đối, RRF hết tác dụng)")
-
-        # Ở mức doc, việc gộp chunk→doc đã xảy ra BÊN TRONG từng nguồn rồi; hybrid chỉ còn nhận
-        # đúng một chunk đại diện cho mỗi doc, nên `pool` của hybrid là phép đồng nhất với MỌI
-        # chiến lược. Config ghi `pool: mean_top2` ở đây sẽ không làm gì cả, mà lại đọc như
-        # đang làm gì đó — đúng loại nhầm lẫn im lặng mà repo này chặn bằng lỗi.
-        if fuse_level == "doc" and pool != "max":
-            raise ValueError(
-                f"fuse_level='doc' thì `pool` của hybrid phải là 'max' (nhận '{pool}'). "
+                f"fuse_level='doc' thì `pool` của hybrid phải là 'max' (nhận '{self.pool}'). "
                 f"Ở mức doc, mỗi nguồn ĐÃ tự gộp chunk→doc bằng pool của riêng nó — khai pool "
                 f"thứ hai ở tầng hybrid là một phép đồng nhất đội lốt tham số. Muốn đổi cách "
                 f"gộp thì đổi `pool` TRONG từng nguồn."
             )
-
-        self.fuse_level = fuse_level
-        self.rrf_k = int(rrf_k)
-        self.absent_rank = absent_rank
-        self.doc_depth = int(doc_depth)
-        self.source_depth = source_depth
         self.verbose = verbose
-
-        self.sources: dict[str, BaseRetriever] = {}
-        raw_weights: dict[str, float] = {}
-        for name, spec in sources.items():
-            spec = dict(spec)
-            w = float(spec.pop("weight", 1.0))
-            if w < 0:
-                raise ValueError(f"nguồn '{name}': weight={w} âm. RRF không định nghĩa với trọng số âm.")
-            raw_weights[name] = w
-            self.sources[name] = build_retriever(spec)
+        self.sources, raw_weights = _build_sources(sources)
         self.weights = normalize_weights(raw_weights)
+
+    @classmethod
+    def from_spec(cls, spec: dict) -> "HybridRetriever":
+        """Dựng từ spec phẳng của YAML (`retrieval.hybrid`).
+
+        Raises:
+            TypeError: Spec có khoá không thuộc `FusionConfig`/`PoolingConfig`/`sources`/`verbose`.
+        """
+        (fuse_kw, pool_kw), rest = split_spec(spec, FusionConfig, PoolingConfig)
+        reject_unknown(cls.__name__, rest, ("sources", "verbose"))
+        return cls(
+            rest.get("sources", {}),
+            FusionConfig(**fuse_kw),
+            PoolingConfig(**pool_kw),
+            verbose=rest.get("verbose", True),
+        )
+
+    # ── thuộc tính rút gọn ───────────────────────────────────────────────────
+    @property
+    def fuse_level(self) -> str:
+        """Mức hợp nhất (`chunk` | `doc`)."""
+        return self.fusion.fuse_level
+
+    @property
+    def rrf_k(self) -> int:
+        """Hằng số k của RRF."""
+        return self.fusion.rrf_k
+
+    @property
+    def absent_rank(self) -> int | None:
+        """Hạng gán cho phần tử vắng mặt ở một nguồn (None = RRF cổ điển)."""
+        return self.fusion.absent_rank
+
+    @property
+    def doc_depth(self) -> int:
+        """Số doc mỗi nguồn đưa vào RRF ở mức doc."""
+        return self.fusion.doc_depth
+
+    @property
+    def source_depth(self) -> int | None:
+        """Số chunk ứng viên lấy từ mỗi nguồn."""
+        return self.fusion.source_depth
 
     # ── index ────────────────────────────────────────────────────────────────
     def index(self, chunks: list[dict]) -> None:
-        """
-        Index chính mình rồi index từng nguồn TRÊN CÙNG danh sách chunk.
+        """Index chính mình rồi index từng nguồn TRÊN CÙNG danh sách chunk.
 
-        Kiểm `chunk_ids` khớp tuyệt đối là bắt buộc, không phải phòng xa: RRF ở mức chunk cộng
-        điểm theo CHỈ SỐ hàng. Hai nguồn lệch một chunk thì chỉ số i của nguồn A trỏ vào chunk
-        khác chỉ số i của nguồn B, và sai lệch đó không có biểu hiện nào ngoài recall tụt.
+        RRF mức chunk cộng điểm theo CHỈ SỐ hàng: hai nguồn lệch một chunk thì chỉ số i của
+        nguồn A trỏ vào chunk khác chỉ số i của nguồn B, và lỗi đó chỉ lộ ra qua recall tụt.
+
+        Raises:
+            ValueError: Một nguồn đăng ký danh sách chunk khác hybrid.
         """
         self._register_chunks(chunks)
         for name, r in self.sources.items():
@@ -195,12 +262,14 @@ class HybridRetriever(BaseRetriever):
     def source_candidates(
         self, queries: list[str], n_candidates: int | None = None
     ) -> dict[str, list[tuple[np.ndarray, np.ndarray]]]:
-        """
-        Ứng viên mức chunk của TỪNG nguồn, chưa hợp nhất.
+        """Ứng viên mức chunk của TỪNG nguồn, chưa hợp nhất.
 
-        Công khai vì `scripts/tune_rrf.py` cần đúng thứ này: chấm điểm một lần rồi quét lưới
-        (w, k) trong RAM. Nếu không có nó thì mỗi ô lưới phải index lại toàn corpus, và lưới
-        11×3 sẽ tốn 33 lần encode 524.422 chunk cho một kết quả không đổi.
+        Công khai cho `scripts/tune_rrf.py`: chấm điểm một lần rồi quét lưới (w, k) trong RAM,
+        thay vì index lại toàn corpus ở mỗi ô lưới.
+
+        Args:
+            queries: Câu hỏi.
+            n_candidates: Số chunk mỗi nguồn; None = `source_depth` hoặc `candidate_chunks`.
         """
         n = n_candidates or self.source_depth or self.candidate_chunks
         return {name: r.candidates(list(queries), n) for name, r in self.sources.items()}
@@ -212,25 +281,30 @@ class HybridRetriever(BaseRetriever):
         rrf_k: int | None = None,
         fuse_level: str | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Hợp nhất ứng viên của MỘT câu hỏi → `(chỉ số chunk, điểm)` như `_score_chunks` yêu cầu.
+        """Hợp nhất ứng viên của MỘT câu hỏi.
 
-        `weights`/`rrf_k`/`fuse_level` cho phép ghi đè để quét lưới mà không dựng lại retriever.
+        Args:
+            per_source: `{nguồn: (chỉ số chunk, điểm)}`.
+            weights: Ghi đè trọng số (quét lưới); None = của retriever.
+            rrf_k: Ghi đè k; None = của retriever.
+            fuse_level: Ghi đè mức hợp nhất; None = của retriever.
+
+        Returns:
+            `(chỉ số chunk, điểm)` như `_score_chunks` yêu cầu.
         """
         w = normalize_weights(weights) if weights else self.weights
         k = self.rrf_k if rrf_k is None else int(rrf_k)
-        level = fuse_level or self.fuse_level
-        if level == "chunk":
+        if (fuse_level or self.fuse_level) == "chunk":
             return self._fuse_chunk_level(per_source, w, k)
         return self._fuse_doc_level(per_source, w, k)
 
-    def _fuse_chunk_level(self, per_source, weights, rrf_k):
-        """
-        Vector hoá bằng numpy, KHÔNG phải tối ưu sớm: `scripts/tune_rrf.py` gọi hàm này một
-        lần cho mỗi ô lưới × mỗi câu hỏi (lưới 11×3 trên 1.000 câu = 33.000 lần), mỗi lần trên
-        tới 2×`candidate_chunks` chunk. Vòng lặp Python ở đây biến việc quét lưới thành việc
-        qua đêm. Và quan trọng hơn: đây là ĐÚNG hàm mà production gọi, nên số đo lúc chỉnh
-        tham số và số đo lúc nộp bài không thể lệch nhau vì hai đoạn code khác nhau.
+    def _fuse_chunk_level(self, per_source, weights, rrf_k) -> tuple[np.ndarray, np.ndarray]:
+        """RRF trên thứ hạng chunk, vector hoá bằng numpy.
+
+        Không phải tối ưu sớm: `tune_rrf.py` gọi hàm này một lần mỗi ô lưới × mỗi câu, và đây
+        là ĐÚNG hàm production gọi — số đo lúc chỉnh tham số và lúc nộp không thể lệch nhau.
+        Hoà điểm thì phá bằng chỉ số chunk (trong một văn bản trùng quy ước "chunk_id nhỏ
+        nhất" của `search_with_anchor`).
         """
         parts_idx, parts_sc, present = [], [], []
         for name, (idx, _) in per_source.items():
@@ -239,7 +313,6 @@ class HybridRetriever(BaseRetriever):
             if w == 0.0 or idx.size == 0:
                 continue
             parts_idx.append(idx)
-            # rank 1..n → w/(k+rank)
             parts_sc.append(w / (rrf_k + np.arange(1, idx.size + 1, dtype=np.float64)))
             present.append((w, idx))
         if not parts_idx:
@@ -247,40 +320,26 @@ class HybridRetriever(BaseRetriever):
 
         uniq, inv = np.unique(np.concatenate(parts_idx), return_inverse=True)
         fused = np.bincount(inv, weights=np.concatenate(parts_sc), minlength=uniq.size)
-
         if self.absent_rank is not None:
             for w, idx in present:
                 fused += np.where(np.isin(uniq, idx), 0.0, w / (rrf_k + self.absent_rank))
-
-        # Phá hoà bằng CHỈ SỐ chunk (thứ tự trong chunks.jsonl). Trong cùng một văn bản, chỉ số
-        # tăng theo `position` mà `chunk_id` cũng zero-pad theo `position` ⇒ trùng khít quy ước
-        # "chunk_id nhỏ nhất" của `search_with_anchor()`. Giữa hai văn bản khác nhau thì thứ tự
-        # hai bên khác nhau, nhưng ở đó ta chỉ cần một quy tắc XÁC ĐỊNH, không cần quy tắc nào
-        # cụ thể — và so số nguyên thì `lexsort` làm được, so chuỗi thì không.
         order = np.lexsort((uniq, -fused))
         return uniq[order], fused[order]
 
-    def _fuse_doc_level(self, per_source, weights, rrf_k):
-        """
-        Mỗi nguồn tự gộp lên doc rồi RRF trên thứ hạng doc, sau đó CHIẾU NGƯỢC về chunk:
-        phát ra đúng MỘT chunk đại diện cho mỗi doc, mang điểm RRF của doc đó.
+    def _fuse_doc_level(self, per_source, weights, rrf_k) -> tuple[np.ndarray, np.ndarray]:
+        """Mỗi nguồn tự gộp lên doc, RRF trên thứ hạng doc, rồi chiếu ngược về chunk.
 
-        Vì mỗi doc chỉ còn một chunk, `pool_scores` của khung là phép đồng nhất với mọi chiến
-        lược (max/sum/mean_topN/logsumexp trên tập một phần tử đều trả về chính phần tử đó).
-        Nhờ thế mức doc dùng lại nguyên `pool_candidates()` + `check_contract()` + phần tính
-        chunk đại diện của `search_with_anchor()` — không có nhánh code riêng nào để lệch.
+        Phát ra đúng MỘT chunk đại diện cho mỗi doc, mang điểm RRF của doc đó — nên
+        `pool_scores` của khung là phép đồng nhất và mức doc dùng lại nguyên
+        `pool_candidates()` + `check_contract()`. Chunk đại diện chọn theo THỨ HẠNG trong nguồn
+        (không theo điểm, vì điểm hai nguồn không so được).
         """
         ranked_docs: dict[str, list[str]] = {}
-        # (thứ hạng trong danh sách chunk của nguồn, chunk_id) → chunk đại diện của doc.
-        # Dùng THỨ HẠNG chứ không dùng điểm vì điểm của hai nguồn không so được với nhau —
-        # cùng lý do khiến ta chọn RRF thay vì cộng điểm.
         anchor: dict[str, tuple[int, str, int]] = {}
         for name, (idx, sc) in per_source.items():
             if weights.get(name, 0.0) == 0.0:
                 continue
-            ranked_docs[name] = [
-                d for d, _ in self.sources[name].pool_candidates(idx, sc, self.doc_depth)
-            ]
+            ranked_docs[name] = [d for d, _ in self.sources[name].pool_candidates(idx, sc, self.doc_depth)]
             for pos, i in enumerate(idx):
                 i = int(i)
                 d = self.chunk_doc_ids[i]
@@ -297,18 +356,14 @@ class HybridRetriever(BaseRetriever):
             np.asarray([fused[d] for d in order], dtype=np.float64),
         )
 
-    def _score_chunks(
-        self, queries: list[str], n_candidates: int
-    ) -> list[tuple[np.ndarray, np.ndarray]]:
+    def _score_chunks(self, queries: list[str], n_candidates: int) -> list[tuple[np.ndarray, np.ndarray]]:
         per_source = self.source_candidates(queries, self.source_depth or n_candidates)
         out = []
         for qi in range(len(queries)):
-            one = {name: per_source[name][qi] for name in self.sources}
-            idx, sc = self.fuse_query(one)
+            idx, sc = self.fuse_query({name: per_source[name][qi] for name in self.sources})
             out.append((idx[:n_candidates], sc[:n_candidates]))
         return out
 
-    # ── log ──────────────────────────────────────────────────────────────────
     def stats(self) -> dict:
         s = super().stats()
         s.update(
@@ -324,13 +379,19 @@ class HybridRetriever(BaseRetriever):
 
 
 def sweep_weights(names: Iterable[str], w_first: float, base: dict[str, float]) -> dict[str, float]:
-    """
-    Một lát cắt 1 chiều qua đơn hình trọng số: nguồn ĐẦU nhận `w_first`, phần còn lại chia
-    `1 - w_first` theo tỉ lệ trọng số gốc của chúng.
+    """Lát cắt 1 chiều qua đơn hình trọng số.
 
-    Với đúng 2 nguồn đây chính là `w` và `1-w` như prototype của P4. Với ≥3 nguồn (BM25 +
-    reranker + kNN) nó là lát cắt giữ nguyên tỉ lệ tương đối của các nguồn phụ — quét cả
-    đơn hình là bài toán khác, và quét nó trên tập fit 4.689 câu thì overfit chính tập fit.
+    Nguồn ĐẦU nhận `w_first`, phần còn lại chia `1 − w_first` theo tỉ lệ trọng số gốc. Với 2
+    nguồn đây chính là `w` / `1−w`; với ≥3 nguồn nó giữ nguyên tỉ lệ tương đối của các nguồn
+    phụ (quét cả đơn hình trên 4.689 câu là overfit tập fit).
+
+    Args:
+        names: Tên nguồn theo thứ tự khai.
+        w_first: Trọng số của nguồn đầu.
+        base: Trọng số gốc (đã chuẩn hoá) để chia phần còn lại.
+
+    Returns:
+        `{nguồn: trọng số}`.
     """
     names = list(names)
     first, rest = names[0], names[1:]

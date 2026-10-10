@@ -1,0 +1,27 @@
+# base.yaml — phần CHUNG của mọi thí nghiệm. Không chạy trực tiếp file này.
+#
+# Mỗi config thí nghiệm khai `extends: base.yaml` (hoặc kế thừa một config khác) rồi chỉ ghi
+# phần KHÁC. Cú pháp và luật gộp: `src/common/config.py`. Đọc config luôn qua
+# `load_config()`, không qua `yaml.safe_load()` — đọc thẳng sẽ thấy khoá `extends` mà không
+# thấy phần kế thừa.
+#
+# ⚠️ `data/chunks.jsonl` là tên file đã khoá (INTERFACES.md §7), nhưng NỘI DUNG của nó đã đổi
+#    một lần: từ 23/09/2026 nó là đầu ra của `src.data.chunker_dieu` (432.142 chunk), không
+#    còn là `src.data.chunker` mặc định (524.422 chunk). Mọi số v0.1–v0.6 đo trên kho cũ,
+#    v0.8 đo trên kho mới. Cách dựng lại từng kho: docs/reproduce.md mục 1.
+seed: 42
+
+paths:
+  chunks:       data/chunks.jsonl
+  corpus_clean: data/corpus_clean.jsonl
+  dev:          data/dev.json          # đo lúc thử nghiệm, dùng chung cả nhóm
+  train_split:  data/train_split.json  # tập CHỌN siêu tham số (tune_rrf, fit_calibration)
+  holdout:      data/holdout.json      # ĐO LẦN CUỐI — mọi script chặn, cần --allow-holdout
+  questions:    data/public-official.json
+  embeddings:   data/embeddings.npy    # tên đã khoá, INTERFACES.md §7
+  cache_dir:    data/cache             # cache token đã tách; .gitignore đã chặn data/
+
+retrieval:
+  top_k_retrieve: 100   # độ sâu tối đa tầng 1
+  top_k_submit: 5       # BTC chặn cứng ở 5 — vượt là câu đó 0 điểm
+  ranking_full_k: 50    # độ sâu ghi ranking_full.json (tách L1-RETRIEVE khỏi L1-RERANK)

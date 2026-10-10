@@ -220,3 +220,14 @@ van_de:
       và bản p4_fuse.py ở đó còn mất cờ `--w`. Đã khôi phục p4_fuse.py / p4_to_preds.py /
       p4_check_submission.py / p5_knn_fuse.py / docs/reproduce.md / RUN_PRIVATE_KNN.md từ main
       sang nhánh này. Trước khi nộp lượt tiếp theo, kiểm bạn đang đứng trên nhánh nào.
+  - id: dau-vao-doi-sau-refactor-0910
+    muc: trung binh
+    mo_ta: >-
+      Refactor 09/10/2026 làm hai mục `inputs` LỆCH sha256 mà KHÔNG đổi thứ đã sinh ra bài nộp.
+      (1) `configs/v0.3_bm25_best.yaml` nay viết bằng `extends: base.yaml`; giải ra bằng
+      `load_config()` thì khối `retrieval.bm25` trùng từng giá trị với bản đã dùng (bỏ khối
+      `pipeline` hỏng do merge và khối `chunking` không có tác dụng). Bản gốc nằm ở commit
+      63fcf2b. (2) `data/chunks.jsonl` trên máy P3 đã được thay bằng kho `strict` (432.142 chunk)
+      cho v0.8; dựng lại kho của bài nộp này bằng `python -m src.data.chunker` (524.422 chunk) —
+      sha256 hiện cho `032a66ae…`, khác `34b426dd…` ở trên vì kho đó sinh từ chunker trước commit
+      c59e98d (cùng số dòng, nội dung đã xác nhận trùng 17/09). Đừng chạy `--record` để "xoá đỏ".

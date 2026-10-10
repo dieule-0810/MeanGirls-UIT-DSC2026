@@ -1,5 +1,5 @@
 """
-Kiểm chứng `src/retrieval/hybrid.py` — hợp nhất RRF nhiều nguồn. CHỦ SỞ HỮU: P3.
+Kiểm chứng `src/retrieval/hybrid.py` — hợp nhất RRF nhiều nguồn.
 
 Chạy được KHÔNG cần `data/` và KHÔNG cần torch: hai nguồn trong corpus giả đều là BM25 với
 tokenizer khác nhau. Đó không phải cách dùng thật (thật là BM25+dense) nhưng nó kiểm đúng thứ
@@ -57,7 +57,7 @@ def build_hybrid(**opts) -> HybridRetriever:
     })
     opts.setdefault("verbose", False)
     opts.setdefault("candidate_chunks", 50)
-    r = HybridRetriever(**opts)
+    r = HybridRetriever.from_spec(opts)
     r.index([dict(c) for c in CHUNKS])
     return r
 
@@ -230,32 +230,32 @@ def test_rrf_k_thay_doi_ket_qua():
 # ─────────────────────────────────────────────────────────────────────────────
 def test_mot_nguon_bao_loi():
     with pytest.raises(ValueError, match="ÍT NHẤT 2 nguồn"):
-        HybridRetriever(sources={"a": bm25_source("regex", 1.0)}, verbose=False)
+        HybridRetriever.from_spec(dict(sources={"a": bm25_source("regex", 1.0)}, verbose=False))
 
 
 def test_muc_doc_voi_pool_khac_max_bao_loi():
     """Pool ở tầng hybrid khi fuse_level=doc là phép đồng nhất — im lặng chấp nhận là bẫy."""
     with pytest.raises(ValueError, match="fuse_level='doc'"):
-        HybridRetriever(
+        HybridRetriever.from_spec(dict(
             sources={"a": bm25_source("regex", 0.5), "b": bm25_source("whitespace", 0.5)},
             fuse_level="doc", pool="mean_top2", verbose=False,
-        )
+        ))
 
 
 def test_fuse_level_sai_ten_bao_loi_ngay_luc_dung():
     with pytest.raises(ValueError, match="fuse_level"):
-        HybridRetriever(
+        HybridRetriever.from_spec(dict(
             sources={"a": bm25_source("regex", 0.5), "b": bm25_source("whitespace", 0.5)},
             fuse_level="document", verbose=False,
-        )
+        ))
 
 
 def test_trong_so_am_bao_loi():
     with pytest.raises(ValueError, match="âm"):
-        HybridRetriever(
+        HybridRetriever.from_spec(dict(
             sources={"a": bm25_source("regex", -0.5), "b": bm25_source("whitespace", 1.0)},
             verbose=False,
-        )
+        ))
 
 
 def test_nguon_nhin_khac_kho_chunk_bao_loi():
@@ -263,10 +263,10 @@ def test_nguon_nhin_khac_kho_chunk_bao_loi():
     Nguồn lọc bớt chunk trong `index()` của nó ⇒ chỉ số hàng lệch ⇒ RRF mức chunk cộng nhầm
     chunk. Không có biểu hiện nào ngoài recall tụt, nên phải chặn bằng lỗi.
     """
-    r = HybridRetriever(
+    r = HybridRetriever.from_spec(dict(
         sources={"a": bm25_source("regex", 0.5), "b": bm25_source("whitespace", 0.5)},
         verbose=False,
-    )
+    ))
     lech = r.sources["b"]
     _index_that = lech.index
     lech.index = lambda chunks: _index_that(chunks[:-1])

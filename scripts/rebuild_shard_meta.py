@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Dựng lại `embeddings.shardKofN.meta.json` cho các mảnh đã encode nhưng mất meta.
+"""Dựng lại `embeddings.shardKofN.meta.json` cho các mảnh đã encode nhưng mất meta.
 
 VÌ SAO CẦN. `encode_corpus.py` từng tính `meta_path` TRƯỚC khi gắn hậu tố mảnh vào
 `out_path`, nên mọi mảnh đều ghi ra đúng một tên `embeddings.meta.json`. Chạy 8 mảnh
@@ -43,7 +42,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 import numpy as np  # noqa: E402
-import yaml  # noqa: E402
+from src.common.config import load_config  # noqa: E402
 
 from src.common.io import load_chunks  # noqa: E402
 from src.retrieval.dense import chunk_fingerprint  # noqa: E402
@@ -54,6 +53,7 @@ LOG_FP_RE = re.compile(r"V[âa]n tay\s*:\s*([0-9a-f]{8,})")
 
 
 def _abs(p: str) -> Path:
+    """Đường dẫn tương đối → tuyệt đối theo gốc repo."""
     q = Path(p)
     return q if q.is_absolute() else REPO / q
 
@@ -76,6 +76,7 @@ def fingerprint_in_log(log_dir: Path, k: int) -> str | None:
 
 
 def main() -> int:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--shards", required=True, help="thư mục chứa embeddings.shardKofN.npy")
     ap.add_argument("--config", required=True, help="config ĐÃ DÙNG lúc encode (lấy repo/revision/pooling)")
@@ -85,7 +86,7 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="kiểm và in, không ghi file nào")
     a = ap.parse_args()
 
-    cfg = yaml.safe_load(_abs(a.config).read_text(encoding="utf-8"))
+    cfg = load_config(_abs(a.config))
     spec = cfg["retrieval"]["dense"]
     chunks_file = a.chunks or cfg["paths"]["chunks"]
 

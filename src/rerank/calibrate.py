@@ -1,5 +1,4 @@
-"""
-Bộ quyết định số lượng văn bản trả về (1..5) — CHỦ SỞ HỮU: P4. Tầng cuối của pipeline.
+"""Bộ quyết định số lượng văn bản trả về (1..5) — tầng cuối của pipeline.
 
 VÌ SAO TẦNG NÀY TỒN TẠI. Mã chấm BTC lấy recall = |gold ∩ pred| / |gold| và
 precision = |gold ∩ pred| / len(pred) rồi trung bình trên mọi câu. Nộp thừa KHÔNG làm
@@ -50,10 +49,17 @@ HARD_LIMIT = 5
 
 
 def _scores_of(row: Sequence) -> list[float]:
-    """
-    Lấy dãy điểm từ một dòng ranking, chấp nhận cả `(doc_id, score)` lẫn
-    `(doc_id, score, chunk_id)` — `search()` trả dạng 2, `search_with_anchor()` và
-    `ranking_full.json` trả dạng 3.
+    """Lấy dãy điểm từ một dòng ranking.
+
+    Args:
+        row: Danh sách `(doc_id, score)` (từ `search()`) hoặc `(doc_id, score, chunk_id)`
+            (từ `search_with_anchor()` / `ranking_full.json`).
+
+    Returns:
+        Điểm theo thứ tự hạng.
+
+    Raises:
+        TypeError: Phần tử là số/chuỗi trần — nhiều khả năng đang truyền nhầm Predictions.
     """
     out = []
     for item in row:
@@ -67,9 +73,21 @@ def _scores_of(row: Sequence) -> list[float]:
 
 
 def margins(scores: Sequence[float], max_count: int, scale_rank: int) -> list[float]:
-    """
-    `m_k` cho k = 1..max_count-1. Phổ điểm phẳng (mẫu số ≤ 0) → toàn 0, tức không có
-    chỗ hụt nào, tức luật cắt sẽ trả `max_count`. Đó là phía an toàn cho recall.
+    """Khe hở điểm đã chuẩn hoá `m_k = (s_k − s_{k+1}) / (s_1 − s_ref)`.
+
+    Phổ điểm phẳng (mẫu số ≤ 0) → toàn 0, tức không có chỗ hụt nào, tức luật cắt trả
+    `max_count` — phía an toàn cho recall.
+
+    Args:
+        scores: Điểm đã sắp giảm dần.
+        max_count: Trần số doc; trả về tối đa `max_count − 1` khe hở.
+        scale_rank: Hạng làm mốc mẫu số (`s_ref = s_{scale_rank}`), ≥ 2.
+
+    Returns:
+        `[m_1, ..., m_{max_count-1}]` (ngắn hơn nếu ranking ngắn).
+
+    Raises:
+        ValueError: `scale_rank < 2`.
     """
     if scale_rank < 2:
         raise ValueError("scale_rank phải ≥ 2 — mẫu số là s_1 − s_(scale_rank)")
@@ -92,16 +110,20 @@ def count_from_margins(
     max_count: int = HARD_LIMIT,
     min_count: int = 1,
 ) -> int:
-    """
-    LUẬT CẮT — nguồn sự thật duy nhất. `decide_one` và phép quét θ của
-    `scripts/fit_calibration.py` đều đi qua đây, để không bao giờ có chuyện fit một luật
-    rồi chạy một luật khác.
+    """LUẬT CẮT — nguồn sự thật duy nhất: n = k nhỏ nhất có `m_k > 0` và `m_k ≥ θ_k`.
 
-    `m > 0` là điều kiện RIÊNG, không gộp vào ngưỡng: khe hở bằng 0 nghĩa là hai văn bản
-    cùng điểm, cắt vào giữa chúng là chọn bừa một trong hai — đúng thứ INTERFACES.md
-    mục 3b bắt phải xử lý tường minh. Không có điều kiện này thì θ=0 (đầu mút của phép
-    quét) cắt phổ điểm PHẲNG còn 1 doc, tức là tự tin nhất ở đúng chỗ không có thông tin
-    nhất. `thresholds` ở đây đã được chuẩn hoá thành list đúng độ dài.
+    `decide_one` và phép quét θ của `scripts/fit_calibration.py` đều đi qua đây, để không bao
+    giờ fit một luật rồi chạy một luật khác. `m > 0` là điều kiện RIÊNG: khe hở 0 nghĩa là hai
+    văn bản cùng điểm, cắt vào giữa là chọn bừa; thiếu nó thì θ=0 cắt phổ điểm PHẲNG còn 1 doc.
+
+    Args:
+        m: Khe hở từ `margins`.
+        thresholds: Ngưỡng đã chuẩn hoá (list dài `max_count − 1`).
+        max_count: Số doc khi không có khe hở nào đạt ngưỡng.
+        min_count: Số doc tối thiểu.
+
+    Returns:
+        Số doc trả về cho câu này.
     """
     for k, mk in enumerate(m, start=1):
         if mk > 0.0 and mk >= thresholds[k - 1]:
@@ -116,7 +138,7 @@ def decide_one(
     min_count: int = 1,
     scale_rank: int = 10,
 ) -> int:
-    """Số doc cho MỘT câu, đi từ điểm thô."""
+    """Số doc cho MỘT câu, đi từ điểm thô (xem `margins` và `count_from_margins`)."""
     return count_from_margins(
         margins(scores, max_count, scale_rank), thresholds, max_count, min_count
     )
@@ -125,7 +147,19 @@ def decide_one(
 def normalize_params(
     thresholds: Sequence[float] | float, max_count: int, min_count: int
 ) -> list[float]:
-    """Kiểm tham số đến từ YAML và trả vectơ ngưỡng đúng độ dài. Fail loud, không đoán."""
+    """Kiểm tham số đến từ YAML và trả vectơ ngưỡng đúng độ dài. Fail loud, không đoán.
+
+    Args:
+        thresholds: Một số (vectơ hằng) hoặc list dài `max_count − 1`.
+        max_count: Phải trong 1..5 — vượt 5 là câu đó 0 điểm, mã chấm không báo lỗi.
+        min_count: Phải trong 1..max_count.
+
+    Returns:
+        Vectơ ngưỡng dài `max_count − 1`.
+
+    Raises:
+        ValueError: Tham số ngoài khoảng hoặc sai độ dài.
+    """
     if not 1 <= max_count <= HARD_LIMIT:
         raise ValueError(
             f"max_count={max_count} ngoài khoảng 1..{HARD_LIMIT}. Trả quá {HARD_LIMIT} doc "
@@ -152,11 +186,20 @@ def decide_counts(
     min_count: int = 1,
     scale_rank: int = 10,
 ) -> list[int]:
-    """
-    Số doc cho từng câu, cùng thứ tự với `ranked`. Đây là hàm `scripts/run_pipeline.py`
-    gọi; mọi tham số đến từ khối `pipeline.calibrate` trong YAML.
+    """Số doc cho từng câu — hàm `scripts/run_pipeline.py` gọi với khối `pipeline.calibrate`.
 
-    `thresholds` nhận một số (vectơ hằng — dạng đã fit) hoặc một list dài `max_count-1`.
+    Args:
+        ranked: Mỗi câu một danh sách `(doc_id, score[, chunk_id])` đã sắp giảm dần.
+        thresholds: Một số (vectơ hằng — dạng đã fit) hoặc list dài `max_count − 1`.
+        max_count: Trần số doc.
+        min_count: Sàn số doc.
+        scale_rank: Hạng làm mốc mẫu số của khe hở.
+
+    Returns:
+        Số doc của từng câu, cùng thứ tự `ranked`, luôn trong 1..5.
+
+    Raises:
+        AssertionError: Lưới an toàn — số doc ra ngoài 1..5.
     """
     thresholds = normalize_params(thresholds, max_count, min_count)
     counts = [
@@ -174,5 +217,5 @@ def decide_counts(
 
 
 def count_histogram(counts: Sequence[int]) -> dict[int, int]:
-    """Phân bố số doc đã trả — in ra để người chạy thấy ngay luật cắt có đang làm gì không."""
+    """Phân bố số doc đã trả, `{số doc: số câu}` — để thấy ngay luật cắt có đang làm gì không."""
     return {n: counts.count(n) for n in sorted(set(counts))}

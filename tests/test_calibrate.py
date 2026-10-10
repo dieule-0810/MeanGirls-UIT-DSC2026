@@ -1,8 +1,6 @@
 """
 Kiểm chứng bộ quyết định số lượng doc (`src/rerank/calibrate.py`).
 
-CHỦ SỞ HỮU: P4.
-
 Chạy được KHÔNG cần `data/` — ranking giả dựng ngay trong file. Trọng tâm không phải
 "hàm chạy đúng không" mà là bốn tính chất mà nếu hỏng thì hỏng ÂM THẦM trên leaderboard:
 

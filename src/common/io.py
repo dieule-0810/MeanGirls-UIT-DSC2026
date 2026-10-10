@@ -1,5 +1,4 @@
-"""
-Đọc/ghi các file trung gian đã khoá trong INTERFACES.md mục 7. Dùng chung, không thuộc riêng ai.
+"""Đọc/ghi các file trung gian đã khoá trong INTERFACES.md §7. Dùng chung, không thuộc riêng ai.
 
 Mọi nơi đọc `chunks.jsonl` / `corpus_clean.jsonl` / file câu hỏi đều báo lỗi giống nhau và
 ép `str` giống nhau (INTERFACES.md mục 0: `doc_id` luôn là `str`), thay vì mỗi script tự viết
@@ -22,13 +21,25 @@ _warned: set[str] = set()
 
 
 def _warn_once(key: str, msg: str) -> None:
+    """In cảnh báo đúng một lần cho mỗi `key` trong tiến trình."""
     if key not in _warned:
         _warned.add(key)
         print(msg)
 
 
 def read_jsonl(path: str | Path) -> Iterator[dict]:
-    """Đọc JSONL, bỏ dòng trống, báo rõ số dòng khi JSON hỏng."""
+    """Đọc JSONL từng dòng, bỏ dòng trống.
+
+    Args:
+        path: File `.jsonl`.
+
+    Yields:
+        Từng bản ghi dict.
+
+    Raises:
+        FileNotFoundError: Không có file (kèm hướng dẫn sinh lại).
+        RuntimeError: Một dòng không phải JSON hợp lệ (báo rõ số dòng).
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(
@@ -46,6 +57,7 @@ def read_jsonl(path: str | Path) -> Iterator[dict]:
 
 
 def _pick(record: dict, aliases: tuple[str, ...]) -> str | None:
+    """Tên khoá đầu tiên trong `aliases` có mặt trong `record`."""
     for k in aliases:
         if k in record:
             return k
@@ -53,10 +65,19 @@ def _pick(record: dict, aliases: tuple[str, ...]) -> str | None:
 
 
 def load_chunks(path: str | Path, skip_empty: bool = True) -> list[dict]:
-    """
-    Nạp `chunks.jsonl`, chuẩn hoá về `chunk_id`/`doc_id`/`position`/`text`, ép `str` ngay tại
-    điểm đọc (INTERFACES.md mục 0). `skip_empty` bỏ chunk rỗng (EDA: 20 văn bản passage rỗng,
-    index chúng chỉ phồng ma trận chứ không bao giờ khớp được gì).
+    """Nạp `chunks.jsonl`, chuẩn hoá về `chunk_id`/`doc_id`/`position`/`text`.
+
+    Ép `str` ngay tại điểm đọc (INTERFACES.md mục 0).
+
+    Args:
+        path: File chunk.
+        skip_empty: Bỏ chunk rỗng — index chúng chỉ phồng ma trận, không bao giờ khớp gì.
+
+    Returns:
+        Danh sách chunk theo thứ tự trong file.
+
+    Raises:
+        ValueError: Chunk thiếu trường bắt buộc, hoặc file không còn chunk nào.
     """
     chunks: list[dict] = []
     n_empty = 0
@@ -103,7 +124,11 @@ def load_chunks(path: str | Path, skip_empty: bool = True) -> list[dict]:
 
 
 def load_corpus_ids(path: str | Path) -> set[str]:
-    """Tập `doc_id` (str) của `corpus_clean.jsonl` — để kiểm doc_id lạ."""
+    """Tập `doc_id` (str) của `corpus_clean.jsonl` — để kiểm doc_id lạ trong dự đoán.
+
+    Raises:
+        ValueError: Bản ghi thiếu cả `doc_id` lẫn `id`.
+    """
     out: set[str] = set()
     for d in read_jsonl(path):
         key = _pick(d, DOC_ID_ALIASES)
@@ -114,10 +139,16 @@ def load_corpus_ids(path: str | Path) -> set[str]:
 
 
 def load_questions(path: str | Path) -> tuple[list[str], list[str]]:
-    """
-    Đọc file câu hỏi (`holdout.json`, `public-official.json`, `train.json`).
+    """Đọc file câu hỏi (`dev.json`, `public-official.json`, `train.json`, ...).
 
-    Trả về `(qids, texts)` cùng thứ tự. `qid` luôn là `str`.
+    Args:
+        path: `{qid: {"question": ...}}` hoặc `{qid: "câu hỏi"}`.
+
+    Returns:
+        `(qids, texts)` cùng thứ tự; `qid` luôn là `str`.
+
+    Raises:
+        ValueError: `question` không phải chuỗi.
     """
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     qids = [str(q) for q in raw]
@@ -132,13 +163,45 @@ def load_questions(path: str | Path) -> tuple[list[str], list[str]]:
 
 
 def write_predictions(preds: dict[str, list[str]], path: str | Path) -> Path:
-    """
-    Ghi `Predictions` (INTERFACES.md mục 4): `{qid: [doc_id, ...]}` — PHẲNG.
+    """Ghi `Predictions` (INTERFACES.md §4): `{qid: [doc_id, ...]}` — PHẲNG.
 
     Không bọc `{"answer": ...}` ở đây; cấu trúc đó chỉ xuất hiện trong `make_submission.py`.
+
+    Args:
+        preds: Dự đoán.
+        path: File đích (thư mục cha được tạo nếu thiếu).
+
+    Returns:
+        Đường dẫn đã ghi.
     """
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     clean = {str(q): [str(d) for d in docs] for q, docs in preds.items()}
     out.write_text(json.dumps(clean, ensure_ascii=False, indent=1), encoding="utf-8")
     return out
+
+
+def load_labelled(path: str | Path) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    """Đọc tập CÓ NHÃN cho việc chọn siêu tham số.
+
+    Args:
+        path: `{qid: {"question", "answer"}}` (train_split, dev, ...).
+
+    Returns:
+        `(qids, texts, gold)`.
+
+    Raises:
+        SystemExit: Có câu không có nhãn — tập thi (public/private) không dùng được ở đây.
+    """
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    qids, texts, gold = [], [], {}
+    for q, v in raw.items():
+        if not isinstance(v, dict) or not v.get("answer"):
+            raise SystemExit(
+                f"❌ {path}: qid {q} không có nhãn. Chọn siêu tham số cần nhãn; "
+                f"tập thi (public/private) không dùng được ở đây."
+            )
+        qids.append(str(q))
+        texts.append(v["question"])
+        gold[str(q)] = [str(a) for a in v["answer"]]
+    return qids, texts, gold

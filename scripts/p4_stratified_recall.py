@@ -39,6 +39,7 @@ TIERS = [(0, 0, "freq=0"), (1, 2, "freq=1-2"), (3, 10, "freq=3-10"), (11, 10**9,
 
 
 def tier_of(f: int) -> str:
+    """Tên tầng tần suất chứa `f`."""
     for lo, hi, name in TIERS:
         if lo <= f <= hi:
             return name
@@ -52,6 +53,7 @@ def gold_freq() -> Counter:
 
 
 def main() -> int:
+    """Điểm vào CLI."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--ranking", required=True, help="đầu ra của p4_build_ranking")
     ap.add_argument("--questions", required=True)
