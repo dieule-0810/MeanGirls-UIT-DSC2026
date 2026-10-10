@@ -61,12 +61,16 @@ Recall (chính) và Precision (phụ) theo đúng `scoring.py` của BTC (`src/e
 Bộ quyết định số lượng: ΔRecall −0,0030 (KTC95 cặp [−0,0065, −0,0005], 4/1.000 câu xấu đi),
 precision ×1,24; 907/1.000 câu vẫn trả 5 doc.
 
+Trên `holdout` n=1.000 (đo một lần, 09/10/2026, θ giữ nguyên từ train_split): hợp nhất RRF
+Recall@5 0,9160 · Recall@50 0,9773; sau bộ quyết định số lượng BTC recall 0,9115 · precision
+0,2379. Chênh dev → holdout −0,0224 ở R@5, cùng độ lớn với các bản trước.
+
 ## Hạn chế đã biết
 
 - **Nhãn không đầy đủ**: cùng câu hỏi có gold khác nhau trong `train.json` (vd "Tham nhũng là gì?"
   → `211897` và `279667`). Recall thật cao hơn con số đo được.
-- Chưa đo v0.8 trên `holdout`, nên chưa có ước lượng không thiên lệch cho bản này. Các bản trước
-  cho thấy chênh dev → holdout khoảng −0,01 đến −0,02.
+- v0.8 chưa được nộp lên leaderboard (private test đã đóng), nên holdout là ước lượng ngoài mẫu
+  tốt nhất hiện có cho bản này.
 - Precision vẫn thấp (0,2451) vì phần lớn câu vẫn trả 5 doc — khe hở điểm RRF chỉ nhận một số ít
   giá trị rời rạc nên tín hiệu tự tin yếu.
 - Kho chunk theo Điều không áp dụng được cho TCVN/QCVN (~8,7% văn bản) → cắt cửa sổ trượt.
