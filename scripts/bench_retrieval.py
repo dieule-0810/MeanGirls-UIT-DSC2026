@@ -105,7 +105,7 @@ def run_grid(data: BenchData, grid: BenchGrid) -> list[dict]:
     rows: list[dict] = []
     for tok_name in grid.tokenizers:
         if not have.get(tok_name, False):
-            print(f"\n⏭  Bỏ qua tokenizer '{tok_name}': chưa cài. `pip install -r requirements-p3.txt` nếu cần ô này.")
+            print(f"\n⏭  Bỏ qua tokenizer '{tok_name}': chưa cài. cài pyvi/underthesea (requirements.txt) nếu cần ô này.")
             continue
         rows.extend(_bench_tokenizer(tok_name, data, grid))
     return rows
