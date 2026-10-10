@@ -9,7 +9,7 @@ Cách chạy:
         --corpus-dir data/selected-contexts \
         --train data/train.json \
         --public data/public-official.json \
-        --out docs/eda_notes.md
+        --out outputs/eda/eda_notes.md
 
 Output: in tóm tắt ra stdout + ghi báo cáo markdown vào --out. Nếu mục 9 (ket_luan) có
 ready_to_apply=True, còn ghi thêm docs/exclusion_decisions.json - file nguồn duy nhất mà
@@ -707,7 +707,7 @@ def main():
     ap.add_argument("--corpus-dir", type=Path, default=Path("data/selected-contexts"))
     ap.add_argument("--train", type=Path, default=Path("data/train.json"))
     ap.add_argument("--public", type=Path, default=Path("data/public-official.json"))
-    ap.add_argument("--out", type=Path, default=Path("docs/eda_notes.md"))
+    ap.add_argument("--out", type=Path, default=Path("outputs/eda/eda_notes.md"))
     args = ap.parse_args()
 
     print(f"Đang đọc corpus từ {args.corpus_dir} ...")

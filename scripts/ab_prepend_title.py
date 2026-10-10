@@ -70,7 +70,7 @@ def main() -> int:
     ap.add_argument("--questions", default=None, help="mặc định paths.dev")
     ap.add_argument("--max-words", type=int, default=30, help="độ dài tối đa của tiêu đề gắn vào")
     ap.add_argument("--top-k", type=int, default=50)
-    ap.add_argument("--report", default="docs/ab_prepend_title.md")
+    ap.add_argument("--report", default="outputs/ab_prepend_title/report.md")
     args = ap.parse_args()
 
     cfg = load_config(args.config)

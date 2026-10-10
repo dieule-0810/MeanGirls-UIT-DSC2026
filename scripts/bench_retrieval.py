@@ -219,7 +219,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--n-questions", type=int, default=None, help="chỉ lấy N câu đầu (chạy nhanh)")
     ap.add_argument("--report", default=None, help="file markdown xuất ra")
     ap.add_argument("--results", default=None,
-                    help="file JSON xuất ra (mặc định out_dir/bench_results.json); trỏ sang docs/ nếu cần commit")
+                    help="file JSON xuất ra (mặc định out_dir/bench_results.json)")
     ap.add_argument("--log-experiments", action="store_true", help="thêm dòng vào experiments.csv")
     ap.add_argument("--nguoi-chay", default="P3")
     return ap.parse_args()
