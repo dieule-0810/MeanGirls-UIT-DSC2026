@@ -1,8 +1,0 @@
-# Tầng dense (v0.8) — torch + transformers. Phiên bản đã kiểm chứng trên .venv của team
-# (MacBook M4, Python 3.11.16). Máy CUDA cài torch theo hướng dẫn của pytorch.org cho đúng
-# bản CUDA, GIỮ số phiên bản dưới đây.
-torch==2.14.0
-transformers==5.17.0
-tokenizers==0.23.2
-safetensors==0.8.0
-huggingface_hub==1.28.0
