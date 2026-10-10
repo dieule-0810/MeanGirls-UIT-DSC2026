@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-dense.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-dense.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir pytest==9.1.1   # cho smoke test lúc build bên dưới
 
 COPY src/ ./src/

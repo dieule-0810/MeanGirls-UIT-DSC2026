@@ -204,7 +204,7 @@ class DenseRetriever(BaseRetriever):
             from transformers import AutoModel, AutoTokenizer
         except ImportError as e:
             raise ImportError(
-                "DenseRetriever cần `torch` + `transformers` (chưa nằm trong requirements.txt). "
+                "DenseRetriever cần `torch` + `transformers` (xem requirements.txt). "
                 "Chỉ đọc embedding đã encode sẵn thì truyền `embeddings_path` và không gọi encode."
             ) from e
 
