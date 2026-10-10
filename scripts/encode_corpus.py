@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Encode toàn bộ kho chunk → `data/embeddings.npy` (+ `.meta.json`). CHỦ SỞ HỮU: P3.
+"""Encode toàn bộ kho chunk → `data/embeddings.npy` (+ `.meta.json`).
 
 Tách khỏi `DenseRetriever.index()` vì đây là bước DÀI NHẤT và là bước duy nhất thật sự cần GPU:
 encode một lần trên máy có GPU, mọi lần đo sau chỉ đọc file. Ghi bằng memmap + sổ tiến độ nên

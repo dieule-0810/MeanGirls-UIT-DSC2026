@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kiểm tương đương `candidate_chunks: 2000` vs `null`. CHỦ SỞ HỮU: P3.
+"""Kiểm tương đương `candidate_chunks: 2000` vs `null`.
 
 VÌ SAO CẦN LẠI: `configs/v0.1_bm25_cap2000.yaml` đã kiểm điều này, nhưng chỉ trên
 `tokenizer=regex` + `pool=max`. Hai thứ đó đều đổi ở v0.2:
@@ -153,7 +153,7 @@ def main() -> int:
     lines = [
         f"# Kiểm tương đương `candidate_chunks: {cap}` vs `null`",
         "",
-        "> Sinh bởi `scripts/check_candidate_cap.py`. Chủ sở hữu: P3.",
+        "> Sinh bởi `scripts/check_candidate_cap.py`.",
         f"> Cấu hình `{args.config}` · `{q_path}` n={len(qids)} · corpus {len(chunks)} chunk · top-{args.top_k}.",
         "",
         "```json",

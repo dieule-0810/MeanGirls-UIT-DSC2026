@@ -1,4 +1,4 @@
-"""Chunker lai cho văn bản pháp luật: cắt theo "Điều N", fallback cửa sổ trượt. CHỦ SỞ HỮU: P2.
+"""Chunker lai cho văn bản pháp luật: cắt theo "Điều N", fallback cửa sổ trượt.
 
 Đọc `data/corpus_clean.jsonl`, ghi `chunks.jsonl` đúng hợp đồng INTERFACES.md §2
 (`chunk_id = f"{doc_id}::{position:04d}"`), rồi tự chạy bộ thẩm định ở cuối.

@@ -1,4 +1,4 @@
-"""Hợp đồng tầng truy hồi thứ nhất `BaseRetriever` (INTERFACES.md §3). CHỦ SỞ HỮU: P3.
+"""Hợp đồng tầng truy hồi thứ nhất `BaseRetriever` (INTERFACES.md §3).
 
 Subclass chỉ viết hai hàm:
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A/B: gắn tiêu đề văn bản vào mọi chunk (giả thuyết H6). CHỦ SỞ HỮU: P3.
+"""A/B: gắn tiêu đề văn bản vào mọi chunk (giả thuyết H6).
 
 Index HAI lần trên cùng corpus, cùng tokenizer, cùng pooling — khác đúng một thứ: chunk có được
 ghép "<số hiệu> <LOẠI> <tên>" ở đầu hay không.

@@ -1,5 +1,5 @@
 """
-Kiểm chứng `src/retrieval/hybrid.py` — hợp nhất RRF nhiều nguồn. CHỦ SỞ HỮU: P3.
+Kiểm chứng `src/retrieval/hybrid.py` — hợp nhất RRF nhiều nguồn.
 
 Chạy được KHÔNG cần `data/` và KHÔNG cần torch: hai nguồn trong corpus giả đều là BM25 với
 tokenizer khác nhau. Đó không phải cách dùng thật (thật là BM25+dense) nhưng nó kiểm đúng thứ

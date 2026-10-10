@@ -1,4 +1,4 @@
-"""Gắn tiêu đề văn bản vào chunk lúc index (giả thuyết H6) — CHỦ SỞ HỮU: P3.
+"""Gắn tiêu đề văn bản vào chunk lúc index (giả thuyết H6).
 
 Làm ở thời điểm index, KHÔNG đụng chunker của P2. Đo bằng `scripts/ab_prepend_title.py`.
 

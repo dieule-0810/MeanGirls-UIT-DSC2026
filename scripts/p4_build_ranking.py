@@ -3,7 +3,7 @@
 
 Vì sao cần file này: `search()` trả về cấp document và vứt mất chunk nào đã
 thắng — mà reranker phải biết chấm chunk nào. Đây chính là lỗ hổng
-INTERFACES §3b. File này KHÔNG sửa src/retrieval/ (P3 sở hữu), chỉ dùng lại
+INTERFACES §3b. File này KHÔNG sửa src/retrieval/, chỉ dùng lại
 API công khai `candidates()` + `_doc_ids_arr`, rồi tự gộp chunk→doc theo max
 và GIỮ chunk_id thắng cuộc.
 

@@ -1,6 +1,6 @@
 """Sinh `submission.zip` — chốt chặn cuối cùng trước CodaLab.
 
-⚠️ CHỦ SỞ HỮU: P1 (file KHOÁ). Triết lý FAIL LOUD: mọi thứ mã chấm BTC xử lý im lặng (hoặc
+⚠️ Triết lý FAIL LOUD: mọi thứ mã chấm BTC xử lý im lặng (hoặc
 crash) đều bị chặn ở đây, tại chỗ, với thông báo nói rõ phải sửa gì (docs/scoring_behaviour.md).
 
 Typical usage example:

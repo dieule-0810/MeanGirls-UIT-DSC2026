@@ -1,4 +1,4 @@
-"""Chunker theo Điều, chiến lược `strict` (v2) — lối vào CLI giữ tương thích. CHỦ SỞ HỮU: P2.
+"""Chunker theo Điều, chiến lược `strict` (v2) — lối vào CLI giữ tương thích.
 
 Toàn bộ logic nằm ở `src/data/chunker.py`; file này chỉ đổi chiến lược mặc định sang `strict`
 và file ra mặc định sang `data/chunks_dieu.jsonl`.

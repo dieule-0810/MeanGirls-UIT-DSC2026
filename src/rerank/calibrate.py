@@ -1,4 +1,4 @@
-"""Bộ quyết định số lượng văn bản trả về (1..5) — tầng cuối của pipeline. CHỦ SỞ HỮU: P4.
+"""Bộ quyết định số lượng văn bản trả về (1..5) — tầng cuối của pipeline.
 
 VÌ SAO TẦNG NÀY TỒN TẠI. Mã chấm BTC lấy recall = |gold ∩ pred| / |gold| và
 precision = |gold ∩ pred| / len(pred) rồi trung bình trên mọi câu. Nộp thừa KHÔNG làm

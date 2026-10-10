@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tìm ngưỡng θ cho bộ quyết định số lượng doc (`src/rerank/calibrate.py`). CHỦ SỞ HỮU: P4.
+"""Tìm ngưỡng θ cho bộ quyết định số lượng doc (`src/rerank/calibrate.py`).
 
 Bài toán CÓ RÀNG BUỘC, không phải "tối ưu một con số":
 

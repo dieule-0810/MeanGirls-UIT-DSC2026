@@ -1,6 +1,6 @@
 """Bản sao chính xác logic chấm điểm của BTC (`vendor/btc_scoring/scoring.py`).
 
-⚠️ CHỦ SỞ HỮU: P1 (file KHOÁ). File này CỐ TÌNH giữ nguyên mọi hành vi biên của BTC, kể cả
+⚠️ File này CỐ TÌNH giữ nguyên mọi hành vi biên của BTC, kể cả
 những chỗ trông như bug — đọc docs/scoring_behaviour.md trước khi thắc mắc. Khớp với mã chấm
 thật được kiểm bởi `tests/test_scoring.py`.
 

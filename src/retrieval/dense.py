@@ -1,4 +1,4 @@
-"""Dense bi-encoder trên chunk, khớp `BaseRetriever` (INTERFACES.md §3). CHỦ SỞ HỮU: P3.
+"""Dense bi-encoder trên chunk, khớp `BaseRetriever` (INTERFACES.md §3).
 
 Một đường code cho cả họ BGE-M3 (`AITeamVN/Vietnamese_Embedding_v2`, `BAAI/bge-m3`): cùng
 XLM-R-large, cùng tokenizer, cùng pooling CLS. Đổi model = đổi `repo`/`revision` trong YAML.

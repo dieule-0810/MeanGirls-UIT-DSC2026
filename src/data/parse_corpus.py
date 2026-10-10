@@ -1,4 +1,4 @@
-"""Gộp và làm sạch kho văn bản thô `context_*.json` → `corpus_clean.jsonl`. CHỦ SỞ HỮU: P2.
+"""Gộp và làm sạch kho văn bản thô `context_*.json` → `corpus_clean.jsonl`.
 
 Đọc 8.532 file thô theo thứ tự tên file, loại 25 văn bản đã chốt (20 rỗng + 5 trùng-dư, danh
 sách trong `docs/exclusion_decisions.json` do `scripts/eda.py` sinh), làm sạch rồi ghi 8.507
