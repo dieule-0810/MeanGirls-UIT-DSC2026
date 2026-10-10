@@ -4,7 +4,7 @@
 # Bằng chứng tương đương (kho 524.422 chunk, error_pool 300 câu): 300/300 câu top-50 doc GIỐNG
 # HỆT bản gốc, R@5/20/50 khớp tuyệt đối, 428 → 43 ms/câu.
 #
-# ⚠️ Tương đương này CHỈ đúng với `pool: max`. Với mean_topN thì không (docs/candidate_cap_check.md).
+# ⚠️ Tương đương này CHỈ đúng với `pool: max`. Với mean_topN thì không (xem `v0.5_candnull_*` trong experiments.csv).
 extends: v0.1_bm25.yaml
 exp_id: v0.1_bm25_cap2000
 

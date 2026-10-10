@@ -32,6 +32,6 @@ retrieval:
     pool: mean_top2
     pool_tau: 1.0
     min_df: 1
-    candidate_chunks: 2000   # ⚠️ không trung tính với mean_topN — docs/candidate_cap_check.md
+    candidate_chunks: 2000   # ⚠️ không trung tính với mean_topN — xem `v0.5_candnull_*` trong experiments.csv
     n_jobs: 8
     batch_size: 64
