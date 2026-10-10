@@ -82,8 +82,7 @@ truy vấn chạy được trên CPU / Apple MPS.
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # numpy, scipy, PyYAML
-pip install -r requirements-dense.txt    # torch, transformers
+pip install -r requirements.txt          # numpy, scipy, torch, transformers, ...
 pip install pytest
 python scripts/smoke_test.py             # kiểm môi trường + test, không cần dữ liệu
 ```
