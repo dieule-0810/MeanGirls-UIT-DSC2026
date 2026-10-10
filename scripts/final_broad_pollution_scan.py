@@ -33,7 +33,7 @@ def already_known(passage_nfc: str) -> bool:
 def main():
     """Điểm vào CLI."""
     corpus_path = Path("data/corpus_clean.jsonl")
-    out_path = Path("docs/final_pollution_scan_v0.1.json")
+    out_path = Path("outputs/eda/final_pollution_scan_v0.1.json")
 
     hits_by_keyword = defaultdict(list)
     records = []

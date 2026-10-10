@@ -54,10 +54,9 @@ def main() -> int:
     ap.add_argument("--pools", default=None)
     ap.add_argument(
         "--out",
-        default="docs/candidate_cap_check.json",
-        help="docs/ chứ không phải outputs/: .gitignore chặn outputs/* nhưng chừa !docs/*.json",
+        default="outputs/candidate_cap_check/candidate_cap_check.json",
     )
-    ap.add_argument("--report", default="docs/candidate_cap_check.md")
+    ap.add_argument("--report", default="outputs/candidate_cap_check/candidate_cap_check.md")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
